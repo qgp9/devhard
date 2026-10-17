@@ -111,10 +111,11 @@ class RuntimeState:
     reserved_port: int | None = None
     processes: dict = field(default_factory=lambda: {'tunnel': None, 'browser': None})
     schema_version: int = 1
+    last_error: dict | None = None
 
     @classmethod
     def parse(cls, raw):
-        fields(raw, ['schema_version', 'reserved_port', 'processes'],
+        fields(raw, ['schema_version', 'reserved_port', 'processes', 'last_error'],
                ['schema_version', 'reserved_port', 'processes'])
         version(raw['schema_version'])
         port = raw['reserved_port']
@@ -135,8 +136,13 @@ class RuntimeState:
                 raise InvalidConfig('process argv must be a string array')
         if any(record is not None for record in processes.values()) and port is None:
             raise InvalidConfig('process records require a reserved_port')
-        return cls(port, processes)
+        error = raw.get('last_error')
+        if error is not None:
+            fields(error, ['code', 'message', 'at'], ['code', 'message', 'at'])
+            if not all(isinstance(value, str) and value for value in error.values()):
+                raise InvalidConfig('last_error fields must be nonempty strings')
+        return cls(port, processes, last_error=error)
 
     def as_dict(self):
         return {'schema_version': self.schema_version, 'reserved_port': self.reserved_port,
-                'processes': self.processes}
+                'processes': self.processes, 'last_error': self.last_error}

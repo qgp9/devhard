@@ -1,4 +1,4 @@
-"""M1 CLI. All mutation goes through the same Manager lock and core."""
+"""CLI. All mutation goes through the same Manager lock and core."""
 
 import argparse
 import json
@@ -10,6 +10,7 @@ import threading
 from .config import DevHardError, WorkspaceConfig
 from .manager import AlreadyRunning, Manager, status
 from .store import Store
+from .tunnel import TunnelController, TunnelError
 
 
 def emit(value):
@@ -31,10 +32,22 @@ def main(argv=None):
     workspace_parser.add_parser('list')
     show = workspace_parser.add_parser('show')
     show.add_argument('name')
+    stop_all = workspace_parser.add_parser('stop-all', help='stop managed components and release the reservation')
+    stop_all.add_argument('name')
+    tunnel_parser = commands.add_parser('tunnel').add_subparsers(dest='action', required=True)
+    for action in ('start', 'stop', 'restart', 'status'):
+        tunnel_parser.add_parser(action).add_argument('name')
     args = parser.parse_args(argv)
     try:
         store = Store(args.data_dir)
-        if args.command == 'workspace':
+        if args.command == 'tunnel':
+            store.workspace(args.name)
+            if args.action == 'status':
+                emit(TunnelController(store).observe(args.name))
+            else:
+                with Manager(store) as manager:
+                    emit(manager.tunnel_action(args.name, args.action))
+        elif args.command == 'workspace':
             if args.action == 'add':
                 config = WorkspaceConfig.parse({'schema_version': 1, 'name': args.name,
                                                 'ssh': {'host': args.ssh_host}, 'tabs': args.tab})
@@ -43,6 +56,9 @@ def main(argv=None):
                     emit(result.as_dict())
             elif args.action == 'list':
                 emit([config.as_dict() for config in store.workspaces()])
+            elif args.action == 'stop-all':
+                with Manager(store) as manager:
+                    emit(manager.tunnel_action(args.name, 'stop_all'))
             else:
                 config = store.workspace(args.name)
                 emit({'config': config.as_dict(), 'runtime': store.runtime(args.name).as_dict()})
@@ -59,6 +75,9 @@ def main(argv=None):
                 for sig, handler in previous.items():
                     signal.signal(sig, handler)
         return 0
+    except TunnelError as error:
+        print(json.dumps({'code': error.code, 'message': str(error)}, ensure_ascii=False), file=sys.stderr)
+        return 1
     except AlreadyRunning as error:
         print(f'devhard: {error}', file=sys.stderr)
         return 73

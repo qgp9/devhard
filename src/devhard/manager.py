@@ -1,13 +1,17 @@
-"""Exclusive Manager ownership and startup reconciliation, without process control."""
+"""Exclusive Manager ownership, reconciliation, and serialized core operations."""
 
 from datetime import datetime, timezone
 import errno
 import fcntl
 import os
+import subprocess
+import threading
 import uuid
 
 from .config import DevHardError, InvalidConfig
 from .store import Store, atomic_write, json_text
+from . import process
+from .tunnel import TunnelController, TunnelError
 
 
 class AlreadyRunning(DevHardError):
@@ -31,6 +35,8 @@ class Manager:
         self.instance_id = uuid.uuid4().hex
         self.started_at = now()
         self.restored = []
+        self.tunnels = TunnelController(store)
+        self.operations = threading.RLock()
 
     def __enter__(self):
         if self.fd is not None:
@@ -53,7 +59,7 @@ class Manager:
         self.store._write_enabled = True
         try:
             self.store.initialize()
-            # Reconcile before publishing ready. M1 never assumes saved PIDs are owned.
+            # Reconcile before publishing ready; uncertainty never authorizes control.
             reservations = {}
             self.restored = []
             for config in self.store.workspaces():
@@ -63,7 +69,11 @@ class Manager:
                         raise InvalidConfig(f'duplicate reserved port {state.reserved_port}: '
                                             f'{reservations[state.reserved_port]} and {config.name}')
                     reservations[state.reserved_port] = config.name
-                self.restored.append(self.view(config, state))
+                try:
+                    self.tunnels.reconcile(config.name)
+                except (process.InspectionError, TunnelError, subprocess.TimeoutExpired):
+                    pass  # Journal remains visible as unknown; control stays blocked.
+                self.restored.append(self.view(config, self.store.runtime(config.name)))
             self.ready = True
             self.publish('ready')
             return self
@@ -75,10 +85,11 @@ class Manager:
             raise
 
     def view(self, config, state):
+        tunnel = self.tunnels.observe(config.name)
         return {**config.as_dict(), 'profile_path': str(self.store.safe('workspaces', config.name, 'chrome-profile')),
-                'runtime': state.as_dict(), 'status': {
+                'runtime': state.as_dict(), 'tunnel': tunnel, 'status': {
                     key: 'unknown' if value is not None else 'stopped'
-                    for key, value in state.processes.items()}}
+                    for key, value in state.processes.items()} | {'tunnel': tunnel['state']}}
 
     def publish(self, phase):
         self.info = {'schema_version': 1, 'pid': os.getpid(), 'started_at': self.started_at,
@@ -93,6 +104,17 @@ class Manager:
         self.restored.append(self.view(result, self.store.runtime(result.name)))
         self.publish('ready')
         return result
+
+    def tunnel_action(self, name, action):
+        with self.operations:
+            if not self.ready:
+                raise DevHardError('Manager is not ready')
+            self.store.workspace(name)
+            if action not in ('start', 'stop', 'restart', 'stop_all'):
+                raise DevHardError(f'unsupported tunnel action: {action}')
+            result = getattr(self.tunnels, action)(name)
+            self.restored = [self.view(config, self.store.runtime(config.name)) for config in self.store.workspaces()]
+            return result
 
     def __exit__(self, *_):
         if self.fd is not None:
