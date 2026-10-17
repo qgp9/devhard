@@ -40,9 +40,12 @@ def json_text(value):
 def workspace_toml(config: WorkspaceConfig):
     quote = lambda value: json.dumps(value, ensure_ascii=False)
     return (f'schema_version = 1\nname = {quote(config.name)}\n'
-            f'tabs = {quote(list(config.tabs))}\n\n[ssh]\nhost = {quote(config.ssh_host)}\n'
+            + ('bookmarks = []\n' if not config.bookmarks else '')
+            + f'\n[ssh]\nhost = {quote(config.ssh_host)}\n'
             f'\n[browser]\nprofile = "chrome-profile"\nexecutable = {quote(config.executable)}\n'
-            f'restore_session = {str(config.restore_session).lower()}\n')
+            f'restore_session = {str(config.restore_session).lower()}\n'
+            + ''.join('\n[[bookmarks]]\n' + ''.join(f'{key} = {str(value).lower() if type(value) is bool else quote(value)}\n'
+                       for key, value in bookmark.as_dict().items()) for bookmark in config.bookmarks))
 
 
 class Store:

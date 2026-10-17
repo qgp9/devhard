@@ -65,6 +65,38 @@ class GlobalConfig:
 
 
 @dataclass(frozen=True)
+class Bookmark:
+    name: str
+    url: str
+    description: str = ''
+    initial: bool = False
+
+    @classmethod
+    def parse(cls, raw):
+        fields(raw, ['name', 'url', 'description', 'initial'], ['name', 'url'])
+        title, url = raw['name'], raw['url']
+        description, initial = raw.get('description', ''), raw.get('initial', False)
+        if (not isinstance(title, str) or not title.strip() or len(title) > 512
+                or any(c in title for c in '\0\r\n')):
+            raise InvalidConfig('bookmark.name must be a nonempty single-line name (up to 512 characters)')
+        if not isinstance(description, str) or len(description) > 2000 or '\0' in description:
+            raise InvalidConfig('bookmark.description must be text (up to 2000 characters)')
+        if type(initial) is not bool:
+            raise InvalidConfig('bookmark.initial must be a boolean')
+        try:
+            parsed = urlsplit(url) if isinstance(url, str) else None
+            if (not parsed or parsed.scheme not in ('http', 'https') or not parsed.hostname
+                    or len(url) > 8192 or any(c.isspace() or ord(c) < 32 for c in url) or parsed.port == 0):
+                raise ValueError()
+        except ValueError:
+            raise InvalidConfig('bookmark.url must be a valid HTTP(S) URL') from None
+        return cls(title, url, description, initial)
+
+    def as_dict(self):
+        return {'name': self.name, 'url': self.url, 'description': self.description, 'initial': self.initial}
+
+
+@dataclass(frozen=True)
 class WorkspaceConfig:
     name: str
     ssh_host: str
@@ -72,10 +104,18 @@ class WorkspaceConfig:
     executable: str = 'auto'
     restore_session: bool = True
     schema_version: int = 1
+    bookmarks: tuple[Bookmark, ...] | None = None
+
+    def __post_init__(self):
+        # Retain the legacy Python/CLI tabs input, but keep a single canonical collection.
+        bookmarks = self.bookmarks if self.bookmarks is not None else tuple(
+            Bookmark(url[:512], url, initial=True) for url in self.tabs)
+        object.__setattr__(self, 'bookmarks', tuple(bookmarks))
+        object.__setattr__(self, 'tabs', tuple(b.url for b in bookmarks if b.initial))
 
     @classmethod
     def parse(cls, raw):
-        fields(raw, ['schema_version', 'name', 'ssh', 'browser', 'tabs'],
+        fields(raw, ['schema_version', 'name', 'ssh', 'browser', 'tabs', 'bookmarks'],
                ['schema_version', 'name', 'ssh'])
         version(raw['schema_version'])
         workspace_name = name(raw['name'])
@@ -94,6 +134,14 @@ class WorkspaceConfig:
         restore = browser.get('restore_session', True)
         if type(restore) is not bool:
             raise InvalidConfig('browser.restore_session must be a boolean')
+        if 'tabs' in raw and 'bookmarks' in raw:
+            raise InvalidConfig('use bookmarks or legacy tabs, not both')
+        if 'bookmarks' in raw:
+            bookmarks = raw['bookmarks']
+            if not isinstance(bookmarks, list) or len(bookmarks) > 100:
+                raise InvalidConfig('bookmarks must be an array with at most 100 entries')
+            return cls(workspace_name, host, executable=executable, restore_session=restore,
+                       bookmarks=tuple(Bookmark.parse(item) for item in bookmarks))
         tabs = raw.get('tabs', [])
         if not isinstance(tabs, list):
             raise InvalidConfig('tabs must be an array of HTTP(S) URLs')
@@ -111,7 +159,8 @@ class WorkspaceConfig:
         return {'schema_version': self.schema_version, 'name': self.name,
                 'ssh': {'host': self.ssh_host},
                 'browser': {'profile': 'chrome-profile', 'executable': self.executable,
-                            'restore_session': self.restore_session}, 'tabs': list(self.tabs)}
+                            'restore_session': self.restore_session},
+                'bookmarks': [item.as_dict() for item in self.bookmarks]}
 
 
 @dataclass(frozen=True)

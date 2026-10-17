@@ -135,12 +135,26 @@ class Manager:
             if not self.ready:
                 raise DevHardError('Manager is not ready')
             config = WorkspaceConfig.parse(config.as_dict())
-            self.store.workspace(config.name)
-            for controller in (self.tunnels, self.browsers):
-                if controller.observe(config.name)['state'] not in ('stopped', 'exited', 'error'):
-                    raise DevHardError('Stop both Chrome and SSH before editing this workspace')
+            previous = self.store.workspace(config.name)
+            process_settings = lambda c: (c.ssh_host, c.executable, c.restore_session)
+            if process_settings(previous) != process_settings(config):
+                for controller in (self.tunnels, self.browsers):
+                    if controller.observe(config.name)['state'] not in ('stopped', 'exited', 'error'):
+                        raise DevHardError('Stop both Chrome and SSH before editing connection or browser settings')
             atomic_write(self.store.safe('workspaces', config.name, 'config.toml'), workspace_toml(config))
             return config
+
+    def open_bookmarks(self, name, index=None):
+        with self.operations:
+            if not self.ready:
+                raise DevHardError('Manager is not ready')
+            config = self.store.workspace(name)
+            if index is not None and (type(index) is not int or not 0 <= index < len(config.bookmarks)):
+                raise InvalidConfig('bookmark index is out of range')
+            chosen = config.bookmarks if index is None else (config.bookmarks[index],)
+            if not chosen:
+                raise InvalidConfig('workspace has no bookmarks')
+            return self.browsers.open_bookmarks(name, [b.url for b in chosen])
 
     def browser_action(self, name, action):
         with self.operations:

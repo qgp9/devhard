@@ -20,24 +20,44 @@ function badge(title, value) {
   return el('span',`${title ? title+' · ' : ''}${t(value)}`,`badge ${cls}`);
 }
 function button(text, handler, cls='') { const node=el('button',text,cls); node.type='button'; node.disabled=!connected; node.addEventListener('click',handler); return node; }
-async function command(name, component, action) {
+async function command(name, component, action, body={}) {
   try {
-    const job=await api(`/api/workspaces/${encodeURIComponent(name)}/${component}/${action}`,'POST',{});
+    const job=await api(`/api/workspaces/${encodeURIComponent(name)}/${component}/${action}`,'POST',body);
     notice('accepted',{name,action:job.action});
     await poll();
   } catch(error) { notice('rawError',{message:error.message},true); }
 }
-function edit(config=null) {
+function bookmarkField(labelKey, field, value, type='text') {
+  const label=el('label'), caption=el('span',t(labelKey)); caption.dataset.i18n=labelKey;
+  const input=el(type==='textarea'?'textarea':'input'); input.dataset.field=field;
+  if(type==='textarea') input.rows=2; else input.type=type;
+  input.value=value; if(field==='name' || field==='url') input.required=true;
+  input.maxLength=field==='name'?512:field==='description'?2000:8192;
+  label.append(caption,input); return label;
+}
+function addBookmark(bookmark={name:'',description:'',url:'',initial:false}) {
+  const row=el('div',undefined,'bookmark-editor-row');
+  row.append(bookmarkField('bookmarkName','name',bookmark.name),bookmarkField('bookmarkUrl','url',bookmark.url,'url'),bookmarkField('description','description',bookmark.description,'textarea'));
+  const footer=el('div',undefined,'bookmark-editor-footer'), label=el('label',undefined,'checkbox');
+  const check=el('input'); check.type='checkbox'; check.dataset.field='initial'; check.checked=bookmark.initial;
+  const caption=el('span',t('initialOption')); caption.dataset.i18n='initialOption'; label.append(check,caption);
+  const remove=button(t('remove'),()=>row.remove()); remove.dataset.i18n='remove';
+  footer.append(label,remove); row.append(footer); $('#bookmark-fields').append(row);
+}
+function edit(config=null, locked=false) {
   editing=Boolean(config); form.reset();
   form.elements.name.readOnly=editing;
+  form.elements.host.readOnly=locked; form.elements.executable.readOnly=locked; form.elements.restore.disabled=locked;
+  $('#bookmark-fields').replaceChildren();
   if(config) {
     form.elements.name.value=config.name; form.elements.host.value=config.ssh.host;
-    form.elements.tabs.value=config.tabs.join('\n'); form.elements.restore.checked=config.browser.restore_session;
+    form.elements.restore.checked=config.browser.restore_session;
     form.elements.executable.value=config.browser.executable;
+    config.bookmarks.forEach(addBookmark);
   }
   $('#editor-title').textContent=t(editing?'editTitle':'newTitle');
   $('#save-workspace').textContent=t(editing?'save':'register');
-  $('#editor').hidden=false; (editing?form.elements.host:form.elements.name).focus();
+  $('#editor').hidden=false; (editing?$('#add-bookmark'):form.elements.name).focus();
 }
 function render() {
   const busyNames=new Set(state.jobs.filter(j=>['queued','running'].includes(j.state)).map(j=>j.workspace));
@@ -47,8 +67,9 @@ function render() {
   for(const workspace of state.workspaces) {
     const name=workspace.name, busy=busyNames.has(name), card=el('article',undefined,'card'); card.dataset.workspace=name;
     const top=el('div',undefined,'card-top'), title=el('div'); title.append(el('h3',name),el('div',workspace.config.ssh.host,'host'));
-    const editButton=button(t('settings'),()=>edit(workspace.config),'edit');
-    editButton.disabled=!connected || busy || Object.values(workspace.status).some(s=>!['stopped','exited','error'].includes(s));
+    const locked=Object.values(workspace.status).some(s=>!['stopped','exited','error'].includes(s));
+    const editButton=button(t('settings'),()=>edit(workspace.config,locked),'edit');
+    editButton.disabled=!connected || busy;
     top.append(title,editButton); const states=el('div',undefined,'states');
     states.append(badge('SSH',workspace.status.tunnel),badge('Chrome',workspace.status.browser));
     const controls=el('div',undefined,'controls');
@@ -62,7 +83,22 @@ function render() {
     if(busy) { for(const b of [...controls.querySelectorAll('button'),...components.querySelectorAll('button')]) b.disabled=true; }
     card.append(top,states,controls,components);
     if(busy) card.append(el('div',t('busy'),'busy'));
-    const tabs=el('ul',undefined,'tabs'); for(const url of workspace.config.tabs) tabs.append(el('li',url)); card.append(tabs);
+    const bookmarks=el('section',undefined,'bookmark-list'), heading=el('div',undefined,'section-heading');
+    const canOpen=connected && !busy && workspace.status.browser==='running';
+    const openAll=button(t('openAll'),()=>command(name,'bookmarks','open'));
+    openAll.disabled=!canOpen || !workspace.config.bookmarks.length;
+    openAll.title=t('openHelp'); heading.append(el('h4',t('bookmarks')),openAll); bookmarks.append(heading);
+    workspace.config.bookmarks.forEach((bookmark,index)=>{
+      const row=el('div',undefined,'bookmark-row'), content=el('div',undefined,'bookmark-content');
+      const title=el('div',undefined,'bookmark-title'); title.append(el('strong',bookmark.name));
+      if(bookmark.initial) { const tag=el('span','Initial','initial-tag'); tag.title=t('initialHelp'); title.append(tag); }
+      content.append(title); if(bookmark.description) content.append(el('p',bookmark.description,'bookmark-description'));
+      content.append(el('div',bookmark.url,'bookmark-url'));
+      const open=button(t('open'),()=>command(name,'bookmarks','open',{index})); open.disabled=!canOpen; open.title=t('openHelp');
+      row.append(content,open); bookmarks.append(row);
+    });
+    if(!workspace.config.bookmarks.length) bookmarks.append(el('p',t('noBookmarks'),'hint'));
+    card.append(bookmarks);
     const error=workspace.observation_error || workspace.runtime?.last_error?.message;
     if(error) card.append(el('div',t('recentError',{message:error}),'error'));
     const detail=el('details'), summary=el('summary',t('connectionInfo')); detail.append(summary);
@@ -96,11 +132,12 @@ async function poll() {
   } finally { polling=false; $('#new-workspace').disabled=!connected; $('#save-workspace').disabled=!connected || submitting; }
 }
 $('#new-workspace').addEventListener('click',()=>edit());
+$('#add-bookmark').addEventListener('click',()=>addBookmark());
 $('#cancel-edit').addEventListener('click',()=>{$('#editor').hidden=true;});
 form.addEventListener('submit',async(event)=>{
   event.preventDefault(); if(submitting) return; submitting=true; $('#save-workspace').disabled=true;
   const name=form.elements.name.value;
-  const config={schema_version:1,name,ssh:{host:form.elements.host.value.trim()},tabs:form.elements.tabs.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),browser:{profile:'chrome-profile',restore_session:form.elements.restore.checked,executable:form.elements.executable.value.trim() || 'auto'}};
+  const config={schema_version:1,name,ssh:{host:form.elements.host.value.trim()},bookmarks:[...$('#bookmark-fields').children].map(row=>({name:row.querySelector('[data-field=name]').value.trim(),url:row.querySelector('[data-field=url]').value.trim(),description:row.querySelector('[data-field=description]').value.trim(),initial:row.querySelector('[data-field=initial]').checked})),browser:{profile:'chrome-profile',restore_session:form.elements.restore.checked,executable:form.elements.executable.value.trim() || 'auto'}};
   try {
     await api(editing?`/api/workspaces/${encodeURIComponent(name)}`:'/api/workspaces',editing?'PUT':'POST',config);
     $('#editor').hidden=true; notice('accepted',{name,action:editing?'update':'register'}); await poll();

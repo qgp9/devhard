@@ -225,6 +225,13 @@ def create_app(manager, origin, on_ready=None):
     async def command(name: str, component: str, action: str, request: Request):
         from .config import name as validate_name
         validate_name(name)
+        if component == 'bookmarks' and action == 'open':
+            from .config import fields
+            body = await json_body(request)
+            fields(body, ['index'])
+            if 'index' in body and (type(body['index']) is not int or body['index'] < 0):
+                raise InvalidConfig('bookmark index must be a nonnegative integer')
+            return accepted(name, 'bookmarks.open', lambda: manager.open_bookmarks(name, body.get('index')))
         choices = {'workspace': ('start_all', 'stop_all'),
                    'browser': ('start', 'stop', 'restart'), 'tunnel': ('start', 'stop', 'restart')}
         if component not in choices or action not in choices[component]:

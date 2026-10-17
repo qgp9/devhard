@@ -42,7 +42,8 @@ class BrowserTests(unittest.TestCase):
         self.assertNotIn('--restore-last-session', first)
         self.assertIn('--restore-last-session', restored)
         self.assertNotIn(config.tabs[0], restored)
-        self.assertIn(config.tabs[0], explicit)
+        self.assertNotIn(config.tabs[0], explicit)
+        self.assertIn('about:blank', explicit)
         self.assertFalse(any(arg.startswith('--remote-debugging') for arg in first))
 
     def test_invalid_initialized_flag_is_rejected(self):

@@ -152,6 +152,16 @@ class APITests(unittest.TestCase):
         with TestClient(create_app(self.manager, ORIGIN), base_url=ORIGIN) as other:
             self.assertEqual(other.get('/api/state', headers=self.headers).status_code, 401)
 
+    def test_bookmarks_open_is_an_authenticated_queued_command(self):
+        self.wait(self.register().json())
+        with patch.object(self.manager, 'open_bookmarks', return_value={'result': 'submitted', 'count': 1}) as opened:
+            job = self.request('/api/workspaces/demo/bookmarks/open', 'POST', {'index': 0})
+            self.assertEqual(job.status_code, 202)
+            self.assertEqual(self.wait(job.json())['state'], 'succeeded')
+            opened.assert_called_once_with('demo', 0)
+        for body in ({'index': True}, {'index': -1}, {'url': 'http://arbitrary.test'}):
+            self.assertEqual(self.request('/api/workspaces/demo/bookmarks/open', 'POST', body).status_code, 400)
+
     def test_command_queue_is_bounded(self):
         release, entered = threading.Event(), threading.Event()
         self.addCleanup(release.set)

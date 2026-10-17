@@ -55,12 +55,21 @@ assigned new port is a new origin and starts in English. Switching preserves for
 and running processes. Raw server/SSH error messages and user content are not translated.
 
 Open the printed `api_url` in one or more ordinary local browser tabs/windows.
-Use **＋ Workspace** to register an SSH host and one initial HTTP(S) URL per
-line, then **Start all** to start its tunnel and Chrome. SSH and Chrome can also
-be started, stopped or restarted separately. **Stop all** stops both and releases
-the reserved port while preserving the profile. Stop both before editing settings.
-Initial URLs do not replace a previously restored session; disable session
-restoration to open the configured URLs on every launch.
+Use **＋ Workspace** to register an SSH host and named HTTP(S) bookmarks, with
+optional descriptions. Mark a bookmark **Initial** to open it automatically on
+this workspace’s first successful Chrome launch. It remains an ordinary bookmark
+afterwards. **Open** and **Open all** add new tabs to that workspace’s running
+Chrome, preserving its session, tunnel and reserved port. Start Chrome first;
+opening a bookmark never starts a stopped browser or SSH. Existing tabs are not
+queried, so repeated requests can create duplicate tabs. Completion means Chrome
+accepted the command, not that the destination page loaded.
+
+Bookmarks can be added, edited or removed while Chrome is running. Stop both
+Chrome and SSH to change host, executable or session restoration settings.
+**Start all** starts the tunnel and Chrome; individual controls remain available.
+**Stop all** stops both and releases the port while preserving the profile.
+After the first launch, session restoration opens the previous session; disabling
+restoration opens a blank tab, without replaying Initial bookmarks.
 
 Accepted requests appear as queued/running jobs, followed by completion, partial
 success or failure in the shared activity list. Partial Start All retains a
@@ -89,11 +98,13 @@ the HTML bootstrap. This is a single-user local service, not a remote deployment
 | GET | `/api/state` | Manager, observed workspaces and recent jobs |
 | GET | `/api/jobs/{id}` | One job's current state/outcome |
 | POST | `/api/workspaces` | Register a version-1 workspace configuration |
-| PUT | `/api/workspaces/{name}` | Replace settings of a stopped workspace |
+| PUT | `/api/workspaces/{name}` | Edit bookmarks live; connection/browser edits require stopped processes |
 | POST | `/api/workspaces/{name}/workspace/{start_all,stop_all}` | Combined control |
 | POST | `/api/workspaces/{name}/{tunnel,browser}/{start,stop,restart}` | Individual control |
+| POST | `/api/workspaces/{name}/bookmarks/open` | Open all (`{}`), or one (`{"index": 0}`) bookmark |
 
-Control commands use an empty `{}` JSON body. Mutations return **202 Accepted**
+Lifecycle commands use an empty `{}` JSON body. Bookmark indices refer to the current saved list.
+Bookmark requests may only open saved HTTP(S) URLs; arbitrary request URLs are rejected. Mutations return **202 Accepted**
 with a job and `Location` URL; this means queued, not successful execution. Poll
 until `succeeded`, `partial`, `failed` or `cancelled`. Invalid requests return
 400/413/415, unauthorized requests 401/403, a full queue 429. Errors during
@@ -191,7 +202,6 @@ Workspace configuration:
 ```toml
 schema_version = 1
 name = "dev-a"
-tabs = ["http://127.0.0.1:3000"]
 
 [ssh]
 host = "dev-a"
@@ -200,7 +210,23 @@ host = "dev-a"
 profile = "chrome-profile"
 executable = "auto"
 restore_session = true
+
+[[bookmarks]]
+name = "Development app"
+url = "http://127.0.0.1:3000"
+description = "Main development UI"
+initial = true
+
+[[bookmarks]]
+name = "API docs"
+url = "http://127.0.0.1:6767"
+description = "Open when needed"
+initial = false
 ```
+
+Legacy `tabs = ["http://..."]` configurations remain readable: each URL becomes
+an Initial bookmark whose name is the URL. Saving writes canonical `bookmarks`.
+Do not specify both fields. Empty collections serialize as `bookmarks = []`.
 
 Manager startup validates and reads all configurations and runtime records
 before publishing `ready`. Invalid/missing runtime data and duplicate port
@@ -271,12 +297,18 @@ awaits M5 verification. Chrome is launched directly with its own `--user-data-di
 SOCKS proxy and loopback bypass override. Normal launches do not enable CDP or
 remote debugging.
 
-Initial URLs are used for the first successful launch. Later launches with
-`restore_session = true` use Chrome's `--restore-last-session` without readding
-initial URLs. Runtime `browser_initialized` remembers this policy even after
-Stop All; it defaults to false for older records. With `restore_session = false`,
-configured initial URLs are passed on every launch. Session contents and recovery
-after corruption remain Chrome's responsibility; DevHard does not back up tabs.
+Initial bookmarks are used only for the first successful launch. Later launches
+with `restore_session = true` use Chrome’s `--restore-last-session`; with false,
+DevHard passes `about:blank`. Runtime `browser_initialized` remembers this policy
+even after Stop All. Editing Initial flags never resets it. Chrome’s own startup
+and crash-recovery preferences are not overridden. Session contents and recovery
+after corruption remain Chrome’s responsibility; DevHard does not back up tabs.
+
+Opening bookmarks uses native Chrome command forwarding for the same profile;
+production launches do not enable CDP. A write-ahead notification journal protects
+Manager interruption and browser-exit races. A replacement browser created during
+such a race is cleaned up if uniquely verified, never silently adopted. Interrupted
+requests are not replayed automatically, since they may already have opened tabs.
 
 Before starting or stopping Chrome, DevHard checks profile users as well as saved
 process identity. The profile lock also protects relative/symlink aliases. An
@@ -325,3 +357,14 @@ mise run fixture -- down
 Generated keys and pinned host keys use a private test configuration; the user's
 SSH files are unchanged. Optional global `[ssh] config_file = "/absolute/path"`
 selects a separate OpenSSH configuration for a DevHard data directory.
+
+## Bookmark verification
+
+```sh
+mise exec -- python experiments/bookmark_probe.py
+```
+
+This disposable real-Chrome probe checks Initial-only startup, individual/all
+bookmark opening, intentional duplicates, the same native process and reservation,
+live metadata edits, blank later launches without restoration, and exit-race cleanup.
+CDP is used only by the probe to observe test tabs.

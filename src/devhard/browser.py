@@ -75,6 +75,8 @@ class BrowserController:
         if not path.exists():
             return
         raw = self.store.read(path)
+        if isinstance(raw, dict) and raw.get('purpose') == 'open_bookmarks':
+            return self.reconcile_open(name, raw)
         fields(raw, ['schema_version', 'argv', 'marker', 'reserved_port'],
                ['schema_version', 'argv', 'marker', 'reserved_port'])
         version(raw['schema_version'])
@@ -150,7 +152,74 @@ class BrowserController:
                 '--no-first-run', '--no-default-browser-check', '--disable-background-mode', marker, *self.extra_args]
         if state.browser_initialized and config.restore_session:
             return argv + ['--restore-last-session']
-        return argv + list(config.tabs or ('about:blank',))
+        return argv + list(config.tabs if not state.browser_initialized and config.tabs else ('about:blank',))
+
+    def reconcile_open(self, name, raw):
+        """A notifier must exit; never adopt a new browser created during an exit race."""
+        fields(raw, ['purpose', 'argv', 'marker', 'schema_version'],
+               ['purpose', 'argv', 'marker', 'schema_version'])
+        version(raw['schema_version'])
+        argv, marker = raw['argv'], raw['marker']
+        if (not isinstance(argv, list) or not all(isinstance(a, str) for a in argv)
+                or not isinstance(marker, str) or marker not in argv or '--new-tab' not in argv
+                or not self.expected(name, {'marker': marker, 'argv': argv})):
+            raise InvalidConfig('invalid bookmark notification journal')
+        record = self.store.runtime(name).processes['browser']
+        if record is not None and record['marker'] == marker:
+            raise InvalidConfig('bookmark notifier cannot be the owned browser')
+        pending = process.find_launch(argv, marker)
+        owners = process.profile_processes(self.profile(name))
+        if len(pending) > 1:
+            raise BrowserError('browser_launch_uncertain', 'Multiple bookmark notifier processes; journal retained')
+        if pending:
+            # Both a short-lived notifier and an unintended new main process are ours,
+            # but terminating one must never target the original running browser.
+            candidate = pending[0]
+            if record is not None and candidate['pid'] == record['pid']:
+                raise BrowserError('browser_ownership_unknown', 'Notifier conflicts with owned browser')
+            self.terminate(candidate)
+            owners = process.profile_processes(self.profile(name))
+        if owners and (record is None or process.identity(record) != 'owned' or owners != [record['pid']]):
+            raise BrowserError('browser_ownership_unknown', 'Unverified profile owner after bookmark notification')
+        self.journal_path(name).unlink()
+
+    def open_bookmarks(self, name, urls):
+        self.store.require_writer()
+        self.reconcile(name)
+        observed = self.observe(name)
+        if observed['state'] != 'running':
+            raise BrowserError('browser_not_running', 'Start this workspace’s Chrome before opening bookmarks')
+        record = self.store.runtime(name).processes['browser']
+        marker = f'--devhard-instance={uuid.uuid4().hex}'
+        # Preserve proxy safety even if Chrome exits between ownership check and spawn.
+        port = self.store.runtime(name).reserved_port
+        argv = [record['executable'], f'--user-data-dir={self.profile(name)}',
+                f'--proxy-server=socks5://127.0.0.1:{port}', '--proxy-bypass-list=<-loopback>',
+                '--no-first-run', '--no-default-browser-check', '--disable-background-mode',
+                marker, '--new-tab', *urls]
+        journal = self.journal_path(name)
+        raw = {'schema_version': 1, 'purpose': 'open_bookmarks', 'argv': argv, 'marker': marker}
+        atomic_write(journal, json_text(raw))
+        child = None
+        try:
+            log_path = self.store.safe('workspaces', name, 'runtime', 'browser.log')
+            fd = os.open(log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, 'ab', buffering=0) as log:
+                child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                         start_new_session=True, close_fds=True)
+            code = child.wait(timeout=self.start_timeout)
+            self.reconcile_open(name, raw)
+            if code != 0 or process.identity(record) != 'owned' or self.observe(name)['state'] != 'running':
+                raise BrowserError('bookmark_open_failed', 'Chrome did not accept bookmarks in the original instance')
+            return {'result': 'submitted', 'count': len(urls), 'duplicate_check': False}
+        except BaseException as error:
+            if journal.exists():
+                self.reconcile_open(name, raw)
+            if child is not None:
+                child.poll()
+            if isinstance(error, subprocess.TimeoutExpired):
+                raise BrowserError('bookmark_open_timeout', 'Chrome did not acknowledge the bookmark request in time') from error
+            raise
 
     def start(self, name):
         self.store.require_writer()

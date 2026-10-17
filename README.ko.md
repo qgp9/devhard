@@ -40,13 +40,20 @@ SOCKS 예약 포트와 별개입니다.
 기본 영어로 시작합니다. 언어 전환은 입력 중인 폼과 실행 중인 프로세스를 유지합니다.
 서버·SSH가 반환한 원래 오류 메시지와 사용자 입력값은 번역하지 않습니다.
 
-1. **＋ 워크스페이스**에서 이름, SSH 호스트, 한 줄에 하나씩 초기 HTTP(S) 주소를 등록합니다.
+1. **＋ 워크스페이스**에서 SSH 호스트와 이름·설명·HTTP(S) URL을 가진 북마크를 등록합니다.
 2. **전체 시작**으로 SSH와 독립 Chrome을 실행합니다. SSH 또는 Chrome만 제어할 수도 있습니다.
 3. **전체 종료**는 두 프로세스를 종료하고 포트 예약을 해제하며 Chrome 프로필은 보존합니다.
-4. 설정 편집 전에는 Chrome과 SSH를 모두 종료합니다. 이름은 변경할 수 없습니다.
+4. 북마크는 실행 중에도 편집·추가·삭제할 수 있습니다. 연결·브라우저 설정을 바꾸려면 Chrome과 SSH를 모두 종료합니다. 워크스페이스 이름은 변경할 수 없습니다.
 
-이전 세션 복원을 사용하면 초기 주소는 최초 실행에만 적용합니다. 이후에도 설정한 주소를
-항상 열려면 세션 복원을 해제합니다. 일반 브라우저에서 관리 주소를 여러 창이나 탭으로 열면
+북마크의 **Initial**은 최초 성공한 Chrome 실행에만 자동으로 여는 표시입니다. 이후에는 모두
+일반 북마크이며 **열기** 또는 **모두 열기**로 실행 중인 해당 Chrome에 새 탭을 추가합니다.
+기존 세션·PID·터널·예약은 유지합니다. Chrome이 꺼져 있으면 먼저 시작해야 하며 북마크 열기가
+Chrome이나 SSH를 자동 시작하지 않습니다. 열린 탭을 조회하지 않아 중복 탭이 생길 수 있습니다.
+작업 완료는 Chrome 명령 전달 완료이며 실제 페이지 로드 성공을 뜻하지 않습니다.
+
+이후 실행은 이전 세션을 복원하거나, 복원을 끄면 빈 탭을 엽니다. Initial을 반복 적용하지 않습니다.
+Initial 표시를 편집해도 최초 실행 기록은 초기화되지 않습니다. Chrome 자체의 시작·충돌 복구
+설정은 강제 변경하지 않습니다. 일반 브라우저에서 관리 주소를 여러 창이나 탭으로 열면
 같은 상태와 작업 이력을 확인할 수 있습니다. DevHard가 실행한 프록시 브라우저는 관리 화면에
 사용하지 않습니다. 그 브라우저의 localhost는 원격 서버를 가리킵니다.
 
@@ -152,14 +159,28 @@ max = 60999
 ```toml
 schema_version = 1
 name = "dev-a"
-tabs = ["http://127.0.0.1:3000"]
 [ssh]
 host = "dev-a"
 [browser]
 profile = "chrome-profile"
 executable = "auto"
 restore_session = true
+
+[[bookmarks]]
+name = "개발 앱"
+url = "http://127.0.0.1:3000"
+description = "주 개발 화면"
+initial = true
+
+[[bookmarks]]
+name = "API 문서"
+url = "http://127.0.0.1:6767"
+description = "필요할 때 열기"
+initial = false
 ```
+
+기존 `tabs = ["http://..."]`는 URL을 이름으로 가진 Initial 북마크로 읽습니다. 저장할 때는
+bookmarks 형식으로 기록합니다. 두 필드를 동시에 지정할 수 없습니다. 빈 목록은 `bookmarks = []`입니다.
 
 전역 `[ssh] config_file = "/절대/경로"`로 별도 OpenSSH 설정을 선택할 수 있습니다.
 Chrome 실행 파일은 auto 또는 네이티브 실행 파일의 절대 경로이며 `.app` 디렉터리나 래퍼는
@@ -179,11 +200,13 @@ proxy-header 신뢰는 사용하지 않습니다. no-store/CSP/frame 제한도 �
 | GET | `/api/state` | Manager·워크스페이스 관측·최근 작업 |
 | GET | `/api/jobs/{id}` | 작업 상태와 결과 |
 | POST | `/api/workspaces` | 버전 1 설정으로 등록 |
-| PUT | `/api/workspaces/{name}` | 종료된 워크스페이스 설정 변경 |
+| PUT | `/api/workspaces/{name}` | 북마크는 실행 중 변경, 연결·브라우저 변경은 종료 후 |
 | POST | `/api/workspaces/{name}/workspace/{start_all,stop_all}` | 전체 제어 |
 | POST | `/api/workspaces/{name}/{tunnel,browser}/{start,stop,restart}` | 개별 제어 |
+| POST | `/api/workspaces/{name}/bookmarks/open` | 전체 `{}` 또는 개별 `{"index": 0}` 북마크 열기 |
 
-제어 명령 본문은 `{}`입니다. 변경 요청의 HTTP 202와 Location은 접수됐다는 뜻이며
+프로세스 제어 명령 본문은 `{}`입니다. 북마크 index는 현재 저장 목록의 위치이며, 저장된
+HTTP(S) URL만 열 수 있습니다. 임의 URL을 요청에 넣을 수 없습니다. 변경 요청의 HTTP 202와 Location은 접수됐다는 뜻이며
 실행 성공은 아닙니다. succeeded/partial/failed/cancelled까지 조회하세요.
 잘못된 요청은 400/413/415, 접근 거부는 401/403, 가득 찬 큐는 429로 응답합니다.
 실행 중 오류는 접수된 작업의 결과에 기록됩니다.
@@ -219,3 +242,13 @@ mise exec -- python experiments/browser_probe.py --ssh-host dev-a --second-ssh-h
 각 실험은 `.m0-runs/`, `.m2-runs/`, `.m3-runs/`의 독립 데이터와 실제 프로세스를 사용합니다.
 브라우저 probe에서만 CDP를 켜 실제 페이지·세션을 검사합니다. 원격 파일은 만들지 않습니다.
 실험 도구는 공개 CLI가 아니며 Linux·실제 앱 WebSocket/HMR 검증과 배포 준비는 M5 범위입니다.
+
+## 북마크 검증
+
+```sh
+mise exec -- python experiments/bookmark_probe.py
+```
+
+독립 실제 Chrome에서 최초 실행, 개별·전체 열기, 의도한 중복 탭, PID·예약 유지, 실행 중 편집,
+복원을 끈 이후 실행의 빈 탭, Chrome 종료 경쟁 시 대체 프로세스 정리를 검사합니다. 탭 조회용
+CDP는 검증 프로필에서만 사용합니다. 실제 제품 실행에서는 사용하지 않습니다.
