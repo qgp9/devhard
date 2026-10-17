@@ -16,3 +16,12 @@ Co-authored-by: opencode (deepseek-v4.1-flash) <noreply@opencode.ai>
 Other tools must use their own attribution rather than the Codex identity. Do not
 invent an attribution email; use the tool's documented identity or an identity
 agreed with the user. Keep the human author identity unchanged.
+
+# GitHub posts
+
+Every GitHub post the assistant writes — pull request bodies and comments — must
+open with an attribution line, for example:
+
+```text
+🤖 Generated with opencode (deepseek-v4.1-flash) <noreply@opencode.ai>
+```
