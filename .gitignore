@@ -3,6 +3,7 @@ __pycache__/
 .m0-runs/
 .m2-runs/
 .m3-runs/
+.fixture-runs/
 .DS_Store
 .venv/
 *.egg-info/

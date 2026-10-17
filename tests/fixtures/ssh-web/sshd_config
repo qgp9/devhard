@@ -1,0 +1,19 @@
+Port 22
+ListenAddress 0.0.0.0
+HostKey /run/devhard-keys/ssh_host_ed25519_key
+PidFile /run/sshd.pid
+AuthorizedKeysFile .ssh/authorized_keys
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+AllowUsers devhard
+AllowTcpForwarding local
+PermitOpen 127.0.0.1:3000 127.0.0.1:6767
+X11Forwarding no
+AllowAgentForwarding no
+PermitTunnel no
+UseDNS no
+LogLevel VERBOSE

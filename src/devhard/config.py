@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
 
@@ -43,17 +44,24 @@ class GlobalConfig:
     schema_version: int = 1
     port_min: int = 60000
     port_max: int = 60999
+    ssh_config_file: str | None = None
 
     @classmethod
     def parse(cls, raw):
-        fields(raw, ['schema_version', 'ports'], ['schema_version'])
+        fields(raw, ['schema_version', 'ports', 'ssh'], ['schema_version'])
         version(raw['schema_version'])
         ports = raw.get('ports', {})
         fields(ports, ['min', 'max'])
         low, high = ports.get('min', 60000), ports.get('max', 60999)
         integer(low, 1024, 65535, 'ports.min')
         integer(high, low, 65535, 'ports.max')
-        return cls(port_min=low, port_max=high)
+        ssh = raw.get('ssh', {})
+        fields(ssh, ['config_file'])
+        config_file = ssh.get('config_file')
+        if config_file is not None and (not isinstance(config_file, str)
+                or not Path(config_file).is_absolute() or any(c in config_file for c in '\0\r\n')):
+            raise InvalidConfig('ssh.config_file must be an absolute file path')
+        return cls(port_min=low, port_max=high, ssh_config_file=config_file)
 
 
 @dataclass(frozen=True)

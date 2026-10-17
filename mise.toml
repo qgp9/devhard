@@ -11,3 +11,7 @@ run = "python -m devhard"
 [tasks.test]
 description = "Run unit and process integration tests"
 run = "python -m unittest discover -s tests -v"
+
+[tasks.fixture]
+description = "Manage disposable Docker SSH and HTTP endpoints (up/check/probe/down/status)"
+run = "python experiments/docker_fixture.py"

@@ -51,6 +51,15 @@ class SchemaTests(unittest.TestCase):
             with self.subTest(ports=ports), self.assertRaises(InvalidConfig):
                 GlobalConfig.parse({'schema_version': 1, 'ports': ports})
 
+    def test_optional_ssh_config_path(self):
+        self.assertIsNone(GlobalConfig.parse({'schema_version': 1}).ssh_config_file)
+        path = '/tmp/test fixture/ssh_config'
+        self.assertEqual(GlobalConfig.parse({'schema_version': 1, 'ssh': {
+            'config_file': path}}).ssh_config_file, path)
+        for path in ('relative', '', 1, '/tmp/a\nHost *', '/tmp/a\0b'):
+            with self.subTest(path=path), self.assertRaises(InvalidConfig):
+                GlobalConfig.parse({'schema_version': 1, 'ssh': {'config_file': path}})
+
     def test_invalid_runtime_rejected(self):
         for values in ({'reserved_port': True}, {'reserved_port': 65536}, {'schema_version': 2},
                        {'processes': {'tunnel': {'pid': 3}, 'browser': None}},

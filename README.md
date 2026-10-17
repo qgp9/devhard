@@ -238,3 +238,20 @@ actual document HTTP status and tab restoration. The probe covers concurrent
 Start, independent controls, Manager SIGKILL, a Chrome crash/restart, launch-journal
 recovery, stale identity rejection, an unmanaged profile, partial Start All and
 cleanup. It does not add a production CDP dependency or remote server files.
+
+## Disposable Docker test servers
+
+The [SSH/web fixture](tests/fixtures/ssh-web/README.md) builds one image and starts
+two independent SSH endpoints, each serving loopback HTTP apps on 3000 and 6767.
+With the dedicated Colima profile running:
+
+```sh
+mise run fixture -- up
+mise run fixture -- check
+mise run fixture -- probe --chrome
+mise run fixture -- down
+```
+
+Generated keys and pinned host keys use a private test configuration; the user's
+SSH files are unchanged. Optional global `[ssh] config_file = "/absolute/path"`
+selects a separate OpenSSH configuration for a DevHard data directory.

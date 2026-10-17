@@ -104,11 +104,17 @@ def main():
     parser.add_argument('--ssh-host', required=True)
     parser.add_argument('--second-ssh-host', required=True)
     parser.add_argument('--http-url', action='append', required=True)
+    parser.add_argument('--ssh-config', type=Path)
+    parser.add_argument('--expected-first-id')
+    parser.add_argument('--expected-second-id')
     args = parser.parse_args()
     base = Path(__file__).resolve().parents[1] / '.m3-runs'
     base.mkdir(exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='probe-', dir=base))
     store = Store(root)
+    if args.ssh_config:
+        atomic_write(root / 'config.toml', 'schema_version = 1\n[ssh]\nconfig_file = '
+                     + json.dumps(str(args.ssh_config.resolve())) + '\n')
     evidence = {'root': str(root), 'checks': [], 'documents': []}
     foreground = None
     manual_children = []
@@ -134,11 +140,14 @@ def main():
     def documents(name):
         for entry in wait_for(lambda: loaded(name)):
             value = cdp(entry['webSocketDebuggerUrl'], 'Runtime.evaluate', {
-                'expression': "JSON.stringify({url:location.href,status:performance.getEntriesByType('navigation')[0]?.responseStatus,error:document.documentURI.startsWith('chrome-error:')})",
+                'expression': "JSON.stringify({url:location.href,status:performance.getEntriesByType('navigation')[0]?.responseStatus,error:document.documentURI.startsWith('chrome-error:'),fixture_id:document.documentElement.dataset.fixtureId})",
                 'returnByValue': True})
             document = json.loads(value['result']['value'])
             evidence['documents'].append({'workspace': name, **document})
             check(f'{name}: Chrome loaded {urlsplit(document["url"]).netloc}', document['status'] == 200 and not document['error'])
+            expected = args.expected_first_id if name == 'dev' else args.expected_second_id
+            if expected:
+                check(f'{name}: expected fixture identity', document.get('fixture_id') == expected)
 
     try:
         with Manager(store) as manager:

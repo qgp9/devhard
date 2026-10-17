@@ -24,6 +24,28 @@ def record(marker='DEVHARD_INSTANCE=test', argv=None):
 
 
 class ReservationTests(unittest.TestCase):
+    def test_custom_ssh_config_is_one_argument(self):
+        config_file = '/tmp/fixture keys/ssh_config'
+        atomic_write(self.store.safe('config.toml'), 'schema_version = 1\n[ssh]\n'
+                     f'config_file = "{config_file}"\n')
+        argv = self.controller.ssh_command('host', 60001, 'DEVHARD_INSTANCE=test')
+        self.assertEqual(argv[argv.index('-F') + 1], config_file)
+        self.assertEqual(argv[-3:], ['-D', '127.0.0.1:60001', 'host'])
+
+    def test_changed_ssh_config_does_not_reuse_live_tunnel(self):
+        argv = self.controller.ssh_command('host', 60001, 'DEVHARD_INSTANCE=test')
+        self.store.save_runtime('a', RuntimeState(reserved_port=60001,
+            processes={'browser': None, 'tunnel': record(argv=argv)}))
+        atomic_write(self.store.safe('config.toml'), 'schema_version = 1\n[ssh]\n'
+                     'config_file = "/tmp/other-ssh-config"\n')
+        with patch('devhard.tunnel.process.identity', return_value='owned'), \
+                patch('devhard.tunnel.process.owns_listener') as listener:
+            self.assertEqual(self.controller.observe('a')['state'], 'unknown')
+            with self.assertRaises(TunnelError) as failure:
+                self.controller.start('a')
+            self.assertEqual(failure.exception.code, 'ownership_unknown')
+            listener.assert_not_called()
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

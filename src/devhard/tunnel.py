@@ -150,10 +150,14 @@ class TunnelController:
                 return {**result, 'state': 'exited'}
             argv = record['argv']
             target = self.store.workspace(name).ssh_host
+            config_file = self.store.global_config().ssh_config_file
+            recorded_config = (argv[argv.index('-F') + 1]
+                               if '-F' in argv and argv.index('-F') + 1 < len(argv) else None)
             if ('-D' not in argv or argv[-1] != target or argv.index('-D') + 1 >= len(argv)
-                    or argv[argv.index('-D') + 1] != f'127.0.0.1:{state.reserved_port}'):
+                    or argv[argv.index('-D') + 1] != f'127.0.0.1:{state.reserved_port}'
+                    or recorded_config != config_file):
                 return {**result, 'state': 'unknown', 'process_alive': True,
-                        'reason': 'SSH target or forwarding port differs from current workspace configuration'}
+                        'reason': 'SSH target, configuration file or forwarding port differs from current configuration'}
             result['process_alive'] = True
             result['listener_owned'] = process.owns_listener(record['pid'], state.reserved_port)
             result['socks_responding'] = result['listener_owned'] and socks_ready(state.reserved_port)
@@ -182,6 +186,9 @@ class TunnelController:
         if not executable:
             raise TunnelError('ssh_missing', 'OpenSSH executable was not found')
         argv = [str(Path(executable).resolve()), '-N', '-T', '-S', 'none']
+        config_file = self.store.global_config().ssh_config_file
+        if config_file is not None:
+            argv += ['-F', config_file]
         for option in ('BatchMode=yes', 'ExitOnForwardFailure=yes', 'ForkAfterAuthentication=no',
                        'ControlMaster=no', 'PermitLocalCommand=no', 'RemoteCommand=none',
                        'ForwardAgent=no', 'ForwardX11=no', 'ConnectTimeout=10', 'ConnectionAttempts=1',

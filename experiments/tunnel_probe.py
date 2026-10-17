@@ -21,11 +21,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ssh-host', required=True)
     parser.add_argument('--http-url', action='append', required=True)
+    parser.add_argument('--ssh-config', type=Path)
     args = parser.parse_args()
     base = Path(__file__).resolve().parents[1] / '.m2-runs'
     base.mkdir(exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='probe-', dir=base))
     store = Store(root)
+    if args.ssh_config:
+        atomic_write(root / 'config.toml', 'schema_version = 1\n[ssh]\nconfig_file = '
+                     + json.dumps(str(args.ssh_config.resolve())) + '\n')
     result = {'root': str(root), 'checks': [], 'http_results': []}
     foreground = None
 
@@ -95,6 +99,7 @@ def main():
             manager.tunnel_action('dev-a', 'stop')
             check('individual stop retains reservation', store.runtime('dev-a').reserved_port == port)
             with socket.socket() as conflict:
+                conflict.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 conflict.bind(('127.0.0.1', port))
                 conflict.listen()
                 try:
