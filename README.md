@@ -1,5 +1,7 @@
 # DevHard
 
+**English** | [한국어](README.ko.md)
+
 Workspace launcher for independent Chrome profiles and SSH SOCKS5 tunnels.
 
 M4 implements the data store, workspace registry, Manager lock, port reservations,
@@ -46,10 +48,16 @@ Use the UI/API to mutate while the foreground Manager is running.
 
 ## Management UI and API
 
+The UI defaults to English. Use the **English / 한국어** selector to switch languages.
+Your preference is saved per browser origin and synchronized across management tabs.
+If storage is unavailable, switching still works for the current page. An automatically
+assigned new port is a new origin and starts in English. Switching preserves form input
+and running processes. Raw server/SSH error messages and user content are not translated.
+
 Open the printed `api_url` in one or more ordinary local browser tabs/windows.
-Use **＋ 워크스페이스** to register an SSH host and one initial HTTP(S) URL per
-line, then **전체 시작** to start its tunnel and Chrome. SSH and Chrome can also
-be started, stopped or restarted separately. **전체 종료** stops both and releases
+Use **＋ Workspace** to register an SSH host and one initial HTTP(S) URL per
+line, then **Start all** to start its tunnel and Chrome. SSH and Chrome can also
+be started, stopped or restarted separately. **Stop all** stops both and releases
 the reserved port while preserving the profile. Stop both before editing settings.
 Initial URLs do not replace a previously restored session; disable session
 restoration to open the configured URLs on every launch.

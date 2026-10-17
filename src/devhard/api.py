@@ -188,7 +188,7 @@ def create_app(manager, origin, on_ready=None):
 
     @app.get('/assets/{filename}')
     async def asset(filename: str):
-        types = {'app.js': 'text/javascript', 'style.css': 'text/css'}
+        types = {'app.js': 'text/javascript', 'i18n.js': 'text/javascript', 'style.css': 'text/css'}
         if filename not in types:
             raise HTTPException(404, 'Not found')
         return Response((WEB / filename).read_text(), media_type=types[filename])

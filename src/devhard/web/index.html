@@ -1,31 +1,32 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="devhard-token" content="__CONTROL_TOKEN__">
   <title>DevHard · Workspaces</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/i18n.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </head>
 <body>
   <main>
-    <header class="masthead"><a class="brand" href="/">devhard<span class="brand-dot">●</span></a><span id="connection" role="status">연결 중…</span></header>
-    <section class="intro"><div><p class="eyebrow">YOUR DEVELOPMENT SPACES</p><h1>작업할 곳을, 한곳에서.</h1><p class="lede">서버마다 독립된 Chrome과 SSH 연결을 관리하세요.</p></div><button id="new-workspace" class="primary" type="button">＋ 워크스페이스</button></section>
+    <header class="masthead"><a class="brand" href="/">devhard<span class="brand-dot">●</span></a><div class="header-controls"><select id="language" aria-label="Language"><option value="en">English</option><option value="ko">한국어</option></select><span id="connection" role="status"><span data-i18n="connecting">Connecting…</span></span></div></header>
+    <section class="intro"><div><p class="eyebrow">YOUR DEVELOPMENT SPACES</p><h1><span data-i18n="headline">Your workspaces, together.</span></h1><p class="lede"><span data-i18n="intro">Manage an independent Chrome profile and SSH connection for each server.</span></p></div><button id="new-workspace" class="primary" type="button"><span data-i18n="newWorkspace">＋ Workspace</span></button></section>
     <p id="notice" role="status" hidden></p>
     <section id="editor" class="panel" hidden aria-labelledby="editor-title">
-      <div class="section-heading"><h2 id="editor-title">새 워크스페이스</h2><button id="cancel-edit" type="button">닫기</button></div>
+      <div class="section-heading"><h2 id="editor-title"><span data-i18n="newTitle">New workspace</span></h2><button id="cancel-edit" type="button"><span data-i18n="close">Close</span></button></div>
       <form id="workspace-form">
-        <div class="form-grid"><label>이름<input name="name" required pattern="[a-z0-9][a-z0-9_-]{0,62}" maxlength="63" placeholder="my-project"><small>영문 소문자·숫자·밑줄·하이픈, 등록 후 변경 불가</small></label><label>SSH 호스트<input name="host" required placeholder="dev1.h" autocomplete="off"><small>터미널에서 접속 가능한 SSH 별칭 또는 user@host</small></label></div>
-        <label>초기 탭 주소<textarea name="tabs" rows="3" placeholder="http://127.0.0.1:3000&#10;http://127.0.0.1:6767"></textarea><small>한 줄에 한 주소. localhost는 연결한 개발서버를 가리킵니다.</small></label>
-        <label class="checkbox"><input name="restore" type="checkbox" checked>다음 실행부터 이전 Chrome 세션 복원</label><p class="hint">세션 복원을 켜면 초기 탭은 최초 실행에만 사용합니다. 설정을 수정하려면 Chrome과 SSH를 모두 종료하세요.</p>
-        <details><summary>Chrome 실행 파일 설정</summary><label>실행 파일<input name="executable" value="auto" placeholder="auto"><small>자동 탐색은 auto, 직접 지정할 때는 실행 파일의 절대 경로</small></label></details>
-        <div class="form-footer"><p>SSH 키와 최초 호스트 확인은 일반 터미널에서 준비해주세요.</p><button id="save-workspace" class="primary" type="submit">등록</button></div>
+        <div class="form-grid"><label><span data-i18n="name">Name</span><input name="name" required pattern="[a-z0-9][a-z0-9_-]{0,62}" maxlength="63" placeholder="my-project"><small><span data-i18n="nameHelp">Lowercase letters, numbers, underscores and hyphens. Cannot be renamed.</span></small></label><label><span data-i18n="host">SSH host</span><input name="host" required placeholder="dev1.h" autocomplete="off"><small><span data-i18n="hostHelp">An SSH alias or user@host that works in your terminal.</span></small></label></div>
+        <label><span data-i18n="initialTabs">Initial tabs</span><textarea name="tabs" rows="3" placeholder="http://127.0.0.1:3000&#10;http://127.0.0.1:6767"></textarea><small><span data-i18n="tabsHelp">One URL per line. localhost refers to the connected development server.</span></small></label>
+        <label class="checkbox"><input name="restore" type="checkbox" checked><span data-i18n="restore">Restore the previous Chrome session on subsequent launches</span></label><p class="hint"><span data-i18n="restoreHelp">With session restoration enabled, initial tabs are used only on the first launch. Stop both Chrome and SSH before editing settings.</span></p>
+        <details><summary><span data-i18n="chromeSettings">Chrome executable settings</span></summary><label><span data-i18n="executable">Executable</span><input name="executable" value="auto" placeholder="auto"><small><span data-i18n="executableHelp">Use auto for discovery, or an absolute path to the executable.</span></small></label></details>
+        <div class="form-footer"><p><span data-i18n="sshHelp">Prepare SSH keys and confirm the host key in a regular terminal first.</span></p><button id="save-workspace" class="primary" type="submit"><span data-i18n="register">Register</span></button></div>
       </form>
     </section>
-    <section aria-labelledby="spaces-title"><div class="section-heading"><h2 id="spaces-title">Workspaces <span id="workspace-count">0</span></h2><span id="observed" class="muted"></span></div><div id="workspaces" class="workspaces"><div class="empty">워크스페이스를 불러오는 중입니다.</div></div></section>
-    <section class="activity" aria-labelledby="activity-title"><div class="section-heading"><h2 id="activity-title">최근 작업</h2><span class="muted">여러 관리 창에 동일하게 표시됩니다.</span></div><ol id="jobs"><li class="muted">아직 실행한 작업이 없습니다.</li></ol></section>
-    <footer><span>이 페이지나 Manager를 닫아도 실행 중인 Chrome과 SSH는 유지됩니다.</span><details><summary>Manager 정보</summary><pre id="manager-info"></pre></details></footer>
+    <section aria-labelledby="spaces-title"><div class="section-heading"><h2 id="spaces-title"><span data-i18n="workspaces">Workspaces</span> <span id="workspace-count">0</span></h2><span id="observed" class="muted"></span></div><div id="workspaces" class="workspaces"><div class="empty"><span data-i18n="loading">Loading workspaces…</span></div></div></section>
+    <section class="activity" aria-labelledby="activity-title"><div class="section-heading"><h2 id="activity-title"><span data-i18n="activity">Recent activity</span></h2><span class="muted"><span data-i18n="sharedActivity">Shared across all management windows.</span></span></div><ol id="jobs"><li class="muted"><span data-i18n="noJobs">No commands yet.</span></li></ol></section>
+    <footer><span><span data-i18n="keepRunning">Closing this page or the Manager keeps running Chrome and SSH processes alive.</span></span><details><summary><span data-i18n="managerInfo">Manager details</span></summary><pre id="manager-info"></pre></details></footer>
   </main>
 </body>
 </html>
