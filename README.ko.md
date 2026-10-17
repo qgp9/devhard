@@ -1,5 +1,9 @@
 # DevHard
 
+UI에서 **Dark → DevHard**를 선택하면 로고에서 가져온 차콜·은색·붉은색 테마를
+사용할 수 있습니다. **Light → DevHard Light**는 은백색 배경의 밝은 버전입니다.
+두 테마 모두 Rounded·Flat·Terminal 스타일과 조합할 수 있습니다.
+
 [English](README.md) | **한국어**
 
 독립된 Chrome 프로필과 SSH SOCKS5 터널을 워크스페이스별로 관리하는 런처입니다.

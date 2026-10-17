@@ -4,6 +4,10 @@
 
 Workspace launcher for independent Chrome profiles and SSH SOCKS5 tunnels.
 
+Choose **Dark → DevHard** in the UI for the artwork-inspired charcoal, silver and
+red color scheme, or **Light → DevHard Light** for its silver-white counterpart.
+Both work with Rounded, Flat and Terminal styles.
+
 M4 implements the data store, workspace registry, Manager lock, port reservations,
 independent SSH/Chrome controls, workspace Start All/Stop All and a local management UI.
 Product requirements and development records live in the sibling `../notes/`
