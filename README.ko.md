@@ -94,10 +94,9 @@ Chrome 실행 실패로 부분 성공한 경우 정상 SSH 터널을 유지합�
   컨트롤을 만드는 순간, 키보드·스크린리더 동작은 커스텀의 몫이 됩니다. 즉
   비용은 "교체"가 아니라 "커스텀"에 속합니다.
 
-현재 컴포넌트가 구현한 것: `role="listbox"`/`option`과 `aria-expanded`,
-`aria-controls`, `aria-selected`; 방향키, Home/End, Enter/Space, Escape, Tab,
-바깥 클릭, typeahead. 네이티브 select를 완전히 재현하려는 것은 아니며(예:
-모바일 OS 선택 피커 없음), 그럴 의도도 아닙니다.
+현재 지원: ARIA listbox 역할/상태와 키보드 조작(방향키, Home/End, Enter/Space,
+Escape, Tab, 바깥 클릭, typeahead). 네이티브 select 완전 재현은 아님(예: 모바일
+OS 피커 없음).
 
 스크린리더 도달성이 필요해지면, 가장 값싼 방법은 시각적으로 숨긴 네이티브
 `<select>`를 모델로 두고 보조기술에 노출하는 것(커스텀 뷰는 `aria-hidden`)과

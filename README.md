@@ -153,10 +153,9 @@ Why not "native `<select>` + JS enhancement":
   is hidden, any *custom* control owns the keyboard and screen-reader behavior.
   The cost belongs to "custom", not to "replacement".
 
-What the component implements today: `role="listbox"`/`option` with
-`aria-expanded`, `aria-controls` and `aria-selected`; arrow keys, Home/End,
-Enter/Space, Escape, Tab, click-outside, and type-ahead. It is intentionally not
-a full native-select reimplementation (for example, no mobile OS picker).
+Currently supported: ARIA listbox roles/state plus keyboard operation (arrow
+keys, Home/End, Enter/Space, Escape, Tab, click-outside, type-ahead) — not a full
+native-select reimplementation (e.g. no mobile OS picker).
 
 If screen-reader reachability becomes a requirement, the cheapest options are
 to keep a visually hidden native `<select>` as the model and expose it to
