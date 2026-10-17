@@ -132,6 +132,40 @@ mise exec -- python experiments/api_probe.py --chrome
 This starts isolated Managers, checks concurrent clients, shutdown/SIGKILL and
 rediscovery, token rotation, partial success, and cleanup in `.m4-runs/`.
 
+## Accessibility of the theme controls
+
+The header controls for appearance mode, color scheme and UI style share one
+hand-written dropdown component (`createDropdown` in `app.js`) instead of
+native `<select>` elements, so all three look identical across every theme and
+style variant. State lives in `theme.js` (mode, per-appearance scheme, style)
+as the single source of truth; the view reads it on each render and writes back
+through callbacks, so there is no second copy to synchronize.
+
+Why not "native `<select>` + JS enhancement":
+
+- That pattern's classic benefit is progressive enhancement — a usable control
+  when JS fails. It does not apply here: the management UI already requires JS,
+  so a no-JS fallback would do nothing.
+- Its data layer is cheap: with the native select as the model and the custom
+  UI as view/controller that only reads and writes it, no two-way
+  synchronization is needed.
+- Its accessibility cost is not specific to "replacement": once a native select
+  is hidden, any *custom* control owns the keyboard and screen-reader behavior.
+  The cost belongs to "custom", not to "replacement".
+
+What the component implements today: `role="listbox"`/`option` with
+`aria-expanded`, `aria-controls` and `aria-selected`; arrow keys, Home/End,
+Enter/Space, Escape, Tab, click-outside, and type-ahead. It is intentionally not
+a full native-select reimplementation (for example, no mobile OS picker).
+
+If screen-reader reachability becomes a requirement, the cheapest options are
+to keep a visually hidden native `<select>` as the model and expose it to
+assistive technology (custom view `aria-hidden`), or to add an explicit "use
+native controls" preference. Automatic screen-reader detection is unreliable,
+so an opt-in is the honest choice. A simple exposure policy for phones would be
+custom on `pointer:fine` and native on `pointer:coarse`, switched by a media
+query so only one control is ever in the tab order or the accessibility tree.
+
 ## SSH tunnels
 
 Prepare key/ssh-agent authentication and verify the host key with an ordinary
