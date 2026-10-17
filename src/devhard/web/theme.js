@@ -19,6 +19,8 @@
   const defaults={light:'light', dark:'dark'};
   const modes=new Set(['system', 'light', 'dark']);
   const modeKey='devhard.theme.mode';
+  const styleKey='devhard.theme.style';
+  const styles=new Set(['round', 'flat', 'terminal']);
   const schemeKey=appearance=>'devhard.theme.'+appearance;
   const media=window.matchMedia('(prefers-color-scheme: dark)');
   const store=(key,value) => { try { localStorage.setItem(key,value); } catch {} };
@@ -38,8 +40,12 @@
     if(!scheme || scheme.appearance!==appearance) return;
     store(schemeKey(appearance),id); apply();
   };
+  const readStyle=() => { const value=load(styleKey); return styles.has(value) ? value : 'round'; };
+  const applyStyle=() => { document.documentElement.dataset.style=readStyle(); };
+  const setStyle=style => { if(styles.has(style)) { store(styleKey,style); applyStyle(); } };
   const notify=() => window.dispatchEvent(new Event('devhard:appearance'));
   media.addEventListener('change', () => { if(readMode()==='system') { apply(); notify(); } });
-  window.DevHardTheme={registry, modeKey, schemeKey, schemesFor, readMode, effectiveAppearance, readScheme, setMode, setScheme, apply};
+  window.DevHardTheme={registry, modeKey, schemeKey, styleKey, schemesFor, readMode, effectiveAppearance, readScheme, readStyle, setMode, setScheme, setStyle, apply, applyStyle};
   apply();
+  applyStyle();
 })();

@@ -254,8 +254,11 @@ document.addEventListener('click',event=>{
 document.addEventListener('keydown',event=>{ if(event.key==='Escape' && !themeMenu.hidden) { closeThemeMenu(); themeMenuButton.focus(); } });
 themeSelect.addEventListener('change',event=>{ DevHardTheme.setScheme(DevHardTheme.effectiveAppearance(),event.target.value); renderTheme(); });
 window.addEventListener('devhard:appearance',renderTheme);
+const styleSelect=$('#style');
+styleSelect.value=DevHardTheme.readStyle();
+styleSelect.addEventListener('change',event=>{ DevHardTheme.setStyle(event.target.value); styleSelect.value=DevHardTheme.readStyle(); });
 window.addEventListener('storage',event=>{
-  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); renderTheme(); }
+  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.styleKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); DevHardTheme.applyStyle(); renderTheme(); styleSelect.value=DevHardTheme.readStyle(); }
   if(event.key===DevHardI18n.storageKey || event.key===null) { DevHardI18n.select(event.newValue,false); translate(); }
 });
 translate(); poll(); setInterval(poll,1200);
