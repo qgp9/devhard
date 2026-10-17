@@ -90,7 +90,9 @@ class ControlService:
         """Called under lock; one pending snapshot per client, never an event backlog."""
         if self.streams_closed:
             return
-        value = self.state()
+        # Serialize once and share the string across subscribers; each client then
+        # sends the same payload without re-dumping the snapshot.
+        value = json.dumps(self.state(), ensure_ascii=False)
         for queue, loop in self.subscribers.items():
             loop.call_soon_threadsafe(self.offer, queue, value)
 
@@ -107,7 +109,7 @@ class ControlService:
             if self.streams_closed:
                 return
             self.subscribers[queue] = asyncio.get_running_loop()
-            queue.put_nowait(self.state())
+            queue.put_nowait(json.dumps(self.state(), ensure_ascii=False))
         try:
             while True:
                 try:
@@ -117,7 +119,7 @@ class ControlService:
                     continue
                 if value is None:
                     return
-                yield 'event: state\ndata: ' + json.dumps(value, ensure_ascii=False) + '\n\n'
+                yield 'event: state\ndata: ' + value + '\n\n'
         finally:
             with self.lock:
                 self.subscribers.pop(queue, None)

@@ -216,7 +216,8 @@ async function watchState() {
           const lines=frame.split('\n');
           if(!lines.includes('event: state')) continue; // Includes heartbeat comments.
           const data=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');
-          receiveState(JSON.parse(data)); retry=1000;
+          let parsed; try { parsed=JSON.parse(data); } catch { continue; } // Skip one malformed frame; keep the live stream.
+          receiveState(parsed); retry=1000;
         }
       }
     } catch(error) {
@@ -298,6 +299,8 @@ function createDropdown(config) {
   function select(option) { if(option) { config.onSelect(option.dataset.value); close(true); } }
   function render() {
     const current=String(config.value());
+    const active=document.activeElement;
+    const focused=popup.hidden || !active || active.parentElement!==popup ? null : active.dataset.value;
     if(config.name) popup.setAttribute('aria-label',config.name());
     popup.replaceChildren();
     let label='';
@@ -312,6 +315,12 @@ function createDropdown(config) {
       if(selected) label=item.label;
     }
     if(config.showLabel) trigger.replaceChildren(el('span',label));
+    // Rebuilding the options must not drop keyboard focus when the menu is open.
+    if(focused!==null) {
+      const restore=options().find(option=>option.dataset.value===focused)
+        || options().find(option=>option.getAttribute('aria-selected')==='true');
+      if(restore) restore.focus();
+    }
   }
   trigger.addEventListener('click',()=>{ if(popup.hidden) open(); else close(true); });
   trigger.addEventListener('keydown',event=>{

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 import httpx
 
@@ -54,6 +55,31 @@ class SnapshotStreamTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(service.subscribers, {})
             finally:
                 await stream.aclose()
+                service.close()
+
+    async def test_notify_serializes_snapshot_once_for_all_subscribers(self):
+        with tempfile.TemporaryDirectory() as root, Manager(Store(root)) as manager:
+            service = ControlService(manager)
+            streams = [service.events() for _ in range(3)]
+            try:
+                for stream in streams:
+                    await anext(stream)
+                self.assertEqual(len(service.subscribers), 3)
+                calls = []
+                original = json.dumps
+                with patch('devhard.api.json.dumps',
+                           side_effect=lambda *args, **kwargs: calls.append(1) or original(*args, **kwargs)):
+                    with service.lock:
+                        service.notify()
+                    await asyncio.sleep(0)
+                self.assertEqual(len(calls), 1, 'snapshot must be serialized once, not per subscriber')
+                for queue in service.subscribers:
+                    payload = queue.get_nowait()
+                    self.assertIsInstance(payload, str)
+                    self.assertEqual(json.loads(payload)['workspaces'], [])
+            finally:
+                for stream in streams:
+                    await stream.aclose()
                 service.close()
 
 

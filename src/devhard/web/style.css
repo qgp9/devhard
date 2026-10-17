@@ -378,10 +378,13 @@
   font-size:12px;
   text-align:left
 }
-.menu [role="option"]:hover,
+.menu [role="option"]:hover {
+  background:var(--hover)
+}
 .menu [role="option"]:focus {
   background:var(--hover);
-  outline:none
+  outline:2px solid var(--focus);
+  outline-offset:-2px
 }
 .menu-check {
   width:12px;
