@@ -7,6 +7,12 @@ the tool that actually assisted with the change. For Codex, use:
 Co-authored-by: Codex <noreply@openai.com>
 ```
 
+For opencode, include the tool name and the active model id:
+
+```text
+Co-authored-by: opencode (deepseek-v4.1-flash) <noreply@opencode.ai>
+```
+
 Other tools must use their own attribution rather than the Codex identity. Do not
 invent an attribution email; use the tool's documented identity or an identity
 agreed with the user. Keep the human author identity unchanged.
