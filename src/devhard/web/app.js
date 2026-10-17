@@ -24,17 +24,17 @@ async function command(name, component, action, body={}) {
   try {
     const job=await api(`/api/workspaces/${encodeURIComponent(name)}/${component}/${action}`,'POST',body);
     notice('accepted',{name,action:job.action});
-    await poll();
+    updateControls();
   } catch(error) { notice('rawError',{message:error.message},true); }
 }
 async function submitStopAll() {
-  stoppingAll=true;
+  stoppingAll=true; updateControls();
   try {
     const job=await api('/api/workspaces/stop_all','POST',{});
     notice('accepted',{name:t('allWorkspaces'),action:job.action});
-    await poll();
+    updateControls();
   } catch(error) { notice('rawError',{message:error.message},true); }
-  finally { stoppingAll=false; }
+  finally { stoppingAll=false; updateControls(); }
 }
 let currentConfirm=null;
 function renderConfirm() {
@@ -170,22 +170,65 @@ function render() {
   if(!state.jobs.length) jobs.append(el('li',t('noJobs'),'muted'));
   $('#manager-info').textContent=`${state.manager.api_url}\n${t('data')}: ${state.manager.data_root}\nPID: ${state.manager.pid}`;
 }
-let polling=false;
-async function poll() {
-  if(polling) return; polling=true;
-  try {
-    state=await api('/api/state'); connected=true;
-    if(connectionLost) { $('#notice').hidden=true; currentNotice=null; }
-    connectionLost=false;
-    $('#connection').textContent=t('online'); $('#connection').className='online';
-    $('#observed').textContent=state.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
-    if(state.observation_error) notice('observationFailed',{message:state.observation_error},true);
-    render();
-  } catch(error) {
-    connected=false; connectionLost=true; $('#connection').textContent=t('offline'); $('#connection').className='offline';
-    notice('connectionFailed',{},true);
-    if(state) render();
-  } finally { polling=false; const globalBusy=Boolean(state?.jobs?.some(j=>j.workspace==='*' && ['queued','running'].includes(j.state))); $('#new-workspace').disabled=!connected; $('#save-workspace').disabled=!connected || submitting; $('#stop-all-workspaces').disabled=!connected || !state?.workspaces?.length || globalBusy || stoppingAll; }
+function updateControls() {
+  const globalBusy=Boolean(state?.jobs?.some(j=>j.workspace==='*' && ['queued','running'].includes(j.state)));
+  $('#new-workspace').disabled=!connected;
+  $('#save-workspace').disabled=!connected || submitting;
+  $('#stop-all-workspaces').disabled=!connected || !state?.workspaces?.length || globalBusy || stoppingAll;
+}
+function receiveState(value) {
+  state=value; connected=true;
+  if(connectionLost) { $('#notice').hidden=true; currentNotice=null; }
+  connectionLost=false;
+  $('#connection').textContent=t('online'); $('#connection').className='online';
+  $('#observed').textContent=state.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
+  if(state.observation_error) notice('observationFailed',{message:state.observation_error},true);
+  render(); updateControls();
+}
+function disconnected() {
+  connected=false; connectionLost=true;
+  $('#connection').textContent=t('offline'); $('#connection').className='offline';
+  notice('connectionFailed',{},true);
+  if(state) render();
+  updateControls();
+}
+async function watchState() {
+  let retry=1000;
+  while(true) {
+    const controller=new AbortController();
+    let idle, reader, unauthorized=false;
+    const touch=()=>{ clearTimeout(idle); idle=setTimeout(()=>controller.abort(),35000); };
+    try {
+      touch();
+      const response=await fetch('/api/events',{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});
+      unauthorized=response.status===401 || response.status===403;
+      if(!response.ok || !response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('State stream unavailable');
+      reader=response.body.getReader();
+      const decoder=new TextDecoder(); let buffer='';
+      while(true) {
+        const {done,value}=await reader.read();
+        if(done) throw new Error('State stream closed');
+        touch();
+        buffer=(buffer+decoder.decode(value,{stream:true})).replace(/\r\n/g,'\n');
+        let boundary;
+        while((boundary=buffer.indexOf('\n\n'))!==-1) {
+          const frame=buffer.slice(0,boundary); buffer=buffer.slice(boundary+2);
+          const lines=frame.split('\n');
+          if(!lines.includes('event: state')) continue; // Includes heartbeat comments.
+          const data=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');
+          receiveState(JSON.parse(data)); retry=1000;
+        }
+      }
+    } catch(error) {
+      disconnected();
+    } finally {
+      clearTimeout(idle); controller.abort();
+      if(reader) { try { await reader.cancel(); } catch {} reader.releaseLock(); }
+    }
+    // A restarted Manager has a new token; only a page refresh can bootstrap it.
+    if(unauthorized) return;
+    await new Promise(resolve=>setTimeout(resolve,retry)); retry=Math.min(retry*2,10000);
+  }
 }
 $('#new-workspace').addEventListener('click',()=>edit());
 $('#stop-all-workspaces').addEventListener('click',stopAllWorkspaces);
@@ -211,7 +254,7 @@ form.addEventListener('submit',async(event)=>{
   const config={schema_version:1,name,ssh:{host:form.elements.host.value.trim()},bookmarks:bookmarkDraft.map(bookmark=>({...bookmark})),browser:{profile:'chrome-profile',restore_session:form.elements.restore.checked,executable:form.elements.executable.value.trim() || 'auto'}};
   try {
     await api(editing?`/api/workspaces/${encodeURIComponent(name)}`:'/api/workspaces',editing?'PUT':'POST',config);
-    $('#editor').hidden=true; notice('accepted',{name,action:editing?'update':'register'}); await poll();
+    $('#editor').hidden=true; notice('accepted',{name,action:editing?'update':'register'}); updateControls();
   } catch(error) { notice('rawError',{message:error.message},true); }
   finally { submitting=false; $('#save-workspace').disabled=!connected; }
 });
@@ -335,4 +378,4 @@ window.addEventListener('storage',event=>{
   if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.styleKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); DevHardTheme.applyStyle(); renderTheme(); }
   if(event.key===DevHardI18n.storageKey || event.key===null) { DevHardI18n.select(event.newValue,false); translate(); }
 });
-translate(); poll(); setInterval(poll,1200);
+translate(); watchState();

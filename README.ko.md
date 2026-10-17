@@ -241,6 +241,7 @@ proxy-header 신뢰는 사용하지 않습니다. no-store/CSP/frame 제한도 �
 | 메서드 | 경로 | 동작 |
 | --- | --- | --- |
 | GET | `/api/state` | Manager·워크스페이스 관측·최근 작업 |
+| GET | `/api/events` | Bearer 인증 SSE 상태 스트림 |
 | GET | `/api/jobs/{id}` | 작업 상태와 결과 |
 | POST | `/api/workspaces` | 버전 1 설정으로 등록 |
 | PUT | `/api/workspaces/{name}` | 북마크는 실행 중 변경, 연결·브라우저 변경은 종료 후 |
@@ -297,3 +298,8 @@ mise exec -- python experiments/bookmark_probe.py
 선택자 특수문자와 한글 URL, PID·예약 유지, 실행 중 편집,
 복원을 끈 이후 실행의 빈 탭, Chrome 종료 경쟁 시 대체 프로세스 정리를 검사합니다. 탭 조회용
 CDP는 검증 프로필에서만 사용합니다. 실제 제품 실행에서는 사용하지 않습니다.
+
+관리 UI는 Bearer 인증 fetch 스트림으로 SSE를 수신합니다. 연결 시 전체 상태를 받고,
+상태·작업 변경 시 최신 snapshot을 받습니다. 15초 heartbeat와 자동 재연결을 사용하며
+Manager 재시작으로 토큰이 바뀌면 화면을 새로고침해야 합니다. 서버 내부의 프로세스 관측은
+계속 주기적으로 실행됩니다. `/api/state`는 수동 조회와 호환성을 위해 유지합니다.

@@ -108,6 +108,7 @@ the HTML bootstrap. This is a single-user local service, not a remote deployment
 | Method | Path | Result |
 | --- | --- | --- |
 | GET | `/api/state` | Manager, observed workspaces and recent jobs |
+| GET | `/api/events` | Bearer-authenticated SSE state stream |
 | GET | `/api/jobs/{id}` | One job's current state/outcome |
 | POST | `/api/workspaces` | Register a version-1 workspace configuration |
 | PUT | `/api/workspaces/{name}` | Edit bookmarks live; connection/browser edits require stopped processes |
@@ -420,3 +421,9 @@ bookmark opening, existing-tab activation, mixed focus/open requests, literal se
 characters, Unicode URLs, the same native process and reservation,
 live metadata edits, blank later launches without restoration, and exit-race cleanup.
 CDP is used only by the probe to observe test tabs.
+
+The management UI receives SSE through a Bearer-authenticated fetch stream: a full
+snapshot on connection, then the latest snapshot when state or jobs change.
+Heartbeats run every 15 seconds; interrupted connections retry automatically.
+Refresh the page after a Manager restart to obtain its new token. Internal process
+observation remains periodic. `/api/state` remains available for one-off reads.
