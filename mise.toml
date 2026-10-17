@@ -1,0 +1,13 @@
+[tools]
+python = "3.13.16"
+
+[env]
+PYTHONPATH = "{{config_root}}/src"
+
+[tasks.devhard]
+description = "Run the development CLI"
+run = "python -m devhard"
+
+[tasks.test]
+description = "Run unit and process integration tests"
+run = "python -m unittest discover -s tests -v"

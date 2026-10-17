@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devhard"
+version = "0.1.0.dev1"
+description = "Workspace manager for independent Chrome profiles and SSH tunnels"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+devhard = "devhard.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

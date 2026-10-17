@@ -2,3 +2,8 @@ __pycache__/
 *.py[cod]
 .m0-runs/
 .DS_Store
+.venv/
+*.egg-info/
+build/
+dist/
+.devhard/
