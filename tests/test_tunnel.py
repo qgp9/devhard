@@ -218,7 +218,7 @@ class LocalProcessTests(unittest.TestCase):
             args = ['fail', self.message]
         else:
             args = [self.mode, str(port)]
-        return [PYTHON, str(FIXTURE.resolve()), *args, f'SetEnv={marker}']
+        return [PYTHON, str(FIXTURE.resolve()), *args, f'SetEnv={marker}', '-D', f'127.0.0.1:{port}', host]
 
     def cleanup(self):
         try:
@@ -263,6 +263,19 @@ class LocalProcessTests(unittest.TestCase):
         self.assertEqual(failure.exception.code, 'dns_failed')
         self.assertIsNone(self.store.runtime('a').processes['tunnel'])
         self.assertFalse(self.controller.journal_path('a').exists())
+
+    def test_changed_ssh_target_is_not_reported_as_current_connection(self):
+        self.controller.start('a')
+        from devhard.store import workspace_toml
+        path = self.store.safe('workspaces', 'a', 'config.toml')
+        atomic_write(path, workspace_toml(WorkspaceConfig('a', 'other-host')))
+        self.assertEqual(self.controller.observe('a')['state'], 'unknown')
+        with self.assertRaises(TunnelError) as failure:
+            self.controller.start('a')
+        self.assertEqual(failure.exception.code, 'ownership_unknown')
+        # The old owned process can still be explicitly stopped to apply the new config.
+        self.controller.stop('a')
+        self.assertIsNone(self.store.runtime('a').processes['tunnel'])
 
     def test_real_process_is_recovered_from_launch_journal(self):
         state = self.controller.reserve('a')

@@ -3,6 +3,7 @@
 import ctypes
 import errno
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -67,11 +68,16 @@ def snapshot(pid):
         raise InspectionError(str(error)) from error
 
 
+def has_marker(argv, marker):
+    return ((marker.startswith('DEVHARD_INSTANCE=') and f'SetEnv={marker}' in argv)
+            or (marker.startswith('--devhard-instance=') and marker in argv))
+
+
 def matches(record, current):
     return (current is not None and record['started'] == current['started']
             and record['executable'] == current['executable']
             and ' '.join(record['argv']) == current['command']
-            and f'SetEnv={record["marker"]}' in record['argv'])
+            and has_marker(record['argv'], record['marker']))
 
 
 def identity(record):
@@ -86,8 +92,8 @@ def identity(record):
 def capture(pid, argv, marker):
     current = snapshot(pid)
     if (current is None or current['executable'] != argv[0]
-            or current['command'] != ' '.join(argv) or f'SetEnv={marker}' not in argv):
-        raise InspectionError('new SSH process identity could not be verified')
+            or current['command'] != ' '.join(argv) or not has_marker(argv, marker)):
+        raise InspectionError('new process identity could not be verified')
     return {key: current[key] for key in ('pid', 'started', 'executable')} | {'argv': argv, 'marker': marker}
 
 
@@ -99,9 +105,52 @@ def find_launch(argv, marker):
     found = []
     for line in result.stdout.splitlines():
         parts = line.strip().split(None, 1)
-        if len(parts) == 2 and parts[1] == ' '.join(argv) and f'SetEnv={marker}' in argv:
+        if len(parts) == 2 and parts[1] == ' '.join(argv) and has_marker(argv, marker):
             found.append(capture(int(parts[0]), argv, marker))
     return found
+
+
+def profile_processes(profile):
+    """Find main browser candidates, including unmanaged instances; never adopt them."""
+    result = subprocess.run(['ps', '-axww', '-o', 'pid=', '-o', 'command='],
+                            capture_output=True, text=True, timeout=3,
+                            env={**os.environ, 'LC_ALL': 'C'})
+    if result.returncode:
+        raise InspectionError(result.stderr.strip() or 'profile process discovery failed')
+    pattern = re.compile(r'(?<!\S)' + re.escape(f'--user-data-dir={profile}') + r'(?=\s|$)')
+    found = []
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and pattern.search(parts[1]) and ' --type=' not in parts[1]:
+            found.append(int(parts[0]))
+    return found
+
+
+def terminate_application(pid):
+    """Request normal termination of exactly one macOS app instance; no force quit."""
+    if sys.platform != 'darwin':
+        return False
+    ctypes.CDLL('/System/Library/Frameworks/AppKit.framework/AppKit')
+    objc = ctypes.CDLL('/usr/lib/libobjc.A.dylib')
+    objc.objc_getClass.argtypes, objc.objc_getClass.restype = [ctypes.c_char_p], ctypes.c_void_p
+    objc.sel_registerName.argtypes, objc.sel_registerName.restype = [ctypes.c_char_p], ctypes.c_void_p
+    address = ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value
+    send_object = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(address)
+    send_pid = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)(address)
+    send_bool = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(address)
+    send_void = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(address)
+    selector = lambda value: objc.sel_registerName(value.encode())
+    pool = send_object(objc.objc_getClass(b'NSAutoreleasePool'), selector('new'))
+    try:
+        app = send_pid(objc.objc_getClass(b'NSRunningApplication'),
+                       selector('runningApplicationWithProcessIdentifier:'), pid)
+        if not app:
+            return False  # Non-GUI fixtures / command-line processes use SIGTERM.
+        if not send_bool(app, selector('terminate')):
+            raise InspectionError('macOS did not accept the normal application quit request')
+        return True
+    finally:
+        send_void(pool, selector('drain'))
 
 
 def owns_listener(pid, port):

@@ -148,6 +148,12 @@ class TunnelController:
                         'reason': 'process ownership could not be verified'}
             if ownership == 'exited':
                 return {**result, 'state': 'exited'}
+            argv = record['argv']
+            target = self.store.workspace(name).ssh_host
+            if ('-D' not in argv or argv[-1] != target or argv.index('-D') + 1 >= len(argv)
+                    or argv[argv.index('-D') + 1] != f'127.0.0.1:{state.reserved_port}'):
+                return {**result, 'state': 'unknown', 'process_alive': True,
+                        'reason': 'SSH target or forwarding port differs from current workspace configuration'}
             result['process_alive'] = True
             result['listener_owned'] = process.owns_listener(record['pid'], state.reserved_port)
             result['socks_responding'] = result['listener_owned'] and socks_ready(state.reserved_port)

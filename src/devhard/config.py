@@ -112,10 +112,11 @@ class RuntimeState:
     processes: dict = field(default_factory=lambda: {'tunnel': None, 'browser': None})
     schema_version: int = 1
     last_error: dict | None = None
+    browser_initialized: bool = False
 
     @classmethod
     def parse(cls, raw):
-        fields(raw, ['schema_version', 'reserved_port', 'processes', 'last_error'],
+        fields(raw, ['schema_version', 'reserved_port', 'processes', 'last_error', 'browser_initialized'],
                ['schema_version', 'reserved_port', 'processes'])
         version(raw['schema_version'])
         port = raw['reserved_port']
@@ -141,8 +142,12 @@ class RuntimeState:
             fields(error, ['code', 'message', 'at'], ['code', 'message', 'at'])
             if not all(isinstance(value, str) and value for value in error.values()):
                 raise InvalidConfig('last_error fields must be nonempty strings')
-        return cls(port, processes, last_error=error)
+        initialized = raw.get('browser_initialized', False)
+        if type(initialized) is not bool:
+            raise InvalidConfig('browser_initialized must be a boolean')
+        return cls(port, processes, last_error=error, browser_initialized=initialized)
 
     def as_dict(self):
         return {'schema_version': self.schema_version, 'reserved_port': self.reserved_port,
-                'processes': self.processes, 'last_error': self.last_error}
+                'processes': self.processes, 'last_error': self.last_error,
+                'browser_initialized': self.browser_initialized}

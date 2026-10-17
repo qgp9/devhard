@@ -11,6 +11,7 @@ from .config import DevHardError, WorkspaceConfig
 from .manager import AlreadyRunning, Manager, status
 from .store import Store
 from .tunnel import TunnelController, TunnelError
+from .browser import BrowserController
 
 
 def emit(value):
@@ -32,15 +33,25 @@ def main(argv=None):
     workspace_parser.add_parser('list')
     show = workspace_parser.add_parser('show')
     show.add_argument('name')
-    stop_all = workspace_parser.add_parser('stop-all', help='stop managed components and release the reservation')
-    stop_all.add_argument('name')
+    for action in ('start-all', 'stop-all'):
+        workspace_parser.add_parser(action).add_argument('name')
     tunnel_parser = commands.add_parser('tunnel').add_subparsers(dest='action', required=True)
     for action in ('start', 'stop', 'restart', 'status'):
         tunnel_parser.add_parser(action).add_argument('name')
+    browser_parser = commands.add_parser('browser').add_subparsers(dest='action', required=True)
+    for action in ('start', 'stop', 'restart', 'status'):
+        browser_parser.add_parser(action).add_argument('name')
     args = parser.parse_args(argv)
     try:
         store = Store(args.data_dir)
-        if args.command == 'tunnel':
+        if args.command == 'browser':
+            store.workspace(args.name)
+            if args.action == 'status':
+                emit(BrowserController(store, TunnelController(store)).observe(args.name))
+            else:
+                with Manager(store) as manager:
+                    emit(manager.browser_action(args.name, args.action))
+        elif args.command == 'tunnel':
             store.workspace(args.name)
             if args.action == 'status':
                 emit(TunnelController(store).observe(args.name))
@@ -56,9 +67,12 @@ def main(argv=None):
                     emit(result.as_dict())
             elif args.action == 'list':
                 emit([config.as_dict() for config in store.workspaces()])
-            elif args.action == 'stop-all':
+            elif args.action in ('start-all', 'stop-all'):
                 with Manager(store) as manager:
-                    emit(manager.tunnel_action(args.name, 'stop_all'))
+                    result = manager.workspace_action(args.name, args.action.replace('-', '_'))
+                    emit(result)
+                    if result['result'] == 'partial':
+                        return 1
             else:
                 config = store.workspace(args.name)
                 emit({'config': config.as_dict(), 'runtime': store.runtime(args.name).as_dict()})
