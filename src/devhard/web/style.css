@@ -28,6 +28,7 @@
   --badge-fg:var(--muted);
   --danger:var(--bad-fg);
   --offline:var(--bad-fg);
+  --online:var(--accent);
   --busy:var(--warn-fg);
   --focus:var(--accent);
   --focus-input:var(--accent);
@@ -232,6 +233,42 @@
   --bad-fg:#ffa7a7;
   --idle-fg:#b2b8d5
 }
+[data-theme="devhard-light"] {
+  /* Silver-white canvas, charcoal lettering and the logo's red orbit. */
+  color-scheme:light;
+  --bg:#f2f3f5;
+  --surface:#fff;
+  --text:#171b21;
+  --muted:#59616d;
+  --line:#c9ced6;
+  --accent:#c8202c;
+  --accent-hover:#a81623;
+  --on-accent:#fff;
+  --good-fg:#226344;
+  --info-fg:#305b85;
+  --warn-fg:#79500d;
+  --bad-fg:#9d2638;
+  --idle-fg:#59616d;
+  --online:var(--good-fg)
+}
+[data-theme="devhard"] {
+  /* Charcoal terminal, silver lettering and the red orbit of the DevHard artwork. */
+  color-scheme:dark;
+  --bg:#101216;
+  --surface:#1b1f24;
+  --text:#f2f3f5;
+  --muted:#b1b5bd;
+  --line:#41474f;
+  --accent:#ff655a;
+  --accent-hover:#ff887d;
+  --on-accent:#180c0c;
+  --good-fg:#96d5b0;
+  --info-fg:#adc9eb;
+  --warn-fg:#f0c27d;
+  --bad-fg:#ffadb0;
+  --idle-fg:#b1b5bd;
+  --online:var(--good-fg)
+}
 [data-theme="dark"],[data-theme="solarized-dark"],[data-theme="nord"],[data-theme="gruvbox"],[data-theme="monokai"],[data-theme="catppuccin-mocha"],[data-theme="tokyo-night"],[data-theme="rose-pine-moon"],[data-theme="dracula"] {
   color-scheme:dark
 }
@@ -267,7 +304,8 @@
   flex-wrap:wrap;
   gap:16px;
 }
-.header-controls select {
+.header-controls select,
+.header-controls .dropdown-trigger {
   font:inherit;
   font-size:12px;
   padding:7px 9px;
@@ -275,6 +313,21 @@
   background:var(--surface);
   border:1px solid var(--line);
   border-radius:var(--radius-control);
+}
+.dropdown {
+  position:relative;
+  display:inline-flex
+}
+.header-controls .dropdown-trigger {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  cursor:pointer;
+  white-space:nowrap
+}
+.header-controls .dropdown-trigger::after {
+  content:"▾";
+  color:var(--muted)
 }
 .header-controls button {
   font-size:12px;
@@ -312,7 +365,7 @@
   border-radius:var(--radius-control);
   box-shadow:0 6px 18px var(--shadow)
 }
-.menu [role="menuitemradio"] {
+.menu [role="option"] {
   display:flex;
   align-items:center;
   gap:8px;
@@ -325,15 +378,19 @@
   font-size:12px;
   text-align:left
 }
-.menu [role="menuitemradio"]:hover {
+.menu [role="option"]:hover {
+  background:var(--hover)
+}
+.menu [role="option"]:focus {
   background:var(--hover);
-  border-color:transparent
+  outline:2px solid var(--focus);
+  outline-offset:-2px
 }
 .menu-check {
   width:12px;
   visibility:hidden
 }
-.menu [role="menuitemradio"][aria-checked="true"] .menu-check {
+.menu [role="option"][aria-selected="true"] .menu-check {
   visibility:visible
 }
 body {
@@ -401,7 +458,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible {
   color:var(--muted)
 }
 #connection.online {
-  color:var(--accent)
+  color:var(--online)
 }
 #connection.offline {
   color:var(--offline)

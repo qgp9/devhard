@@ -2,10 +2,12 @@
 (() => {
   const registry=[
     {id:'light', label:'Default Light', appearance:'light'},
+    {id:'devhard-light', label:'DevHard Light', appearance:'light'},
     {id:'solarized-light', label:'Solarized Light', appearance:'light'},
     {id:'catppuccin-latte', label:'Catppuccin Latte', appearance:'light'},
     {id:'rose-pine-dawn', label:'Rosé Pine Dawn', appearance:'light'},
     {id:'dark', label:'Default Dark', appearance:'dark'},
+    {id:'devhard', label:'DevHard', appearance:'dark'},
     {id:'solarized-dark', label:'Solarized Dark', appearance:'dark'},
     {id:'nord', label:'Nord', appearance:'dark'},
     {id:'gruvbox', label:'Gruvbox', appearance:'dark'},

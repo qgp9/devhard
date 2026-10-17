@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+import asyncio
 import copy
 from datetime import datetime, timezone
 import json
@@ -12,7 +13,7 @@ import threading
 import uuid
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from .config import DevHardError, InvalidConfig, WorkspaceConfig
 
@@ -34,6 +35,8 @@ class ControlService:
     def __init__(self, manager):
         self.manager = manager
         self.lock = threading.RLock()
+        self.subscribers = {}
+        self.streams_closed = False
         self.jobs = {}
         self.snapshot = {'workspaces': [], 'observed_at': None}
         self.accepting = True
@@ -62,7 +65,11 @@ class ControlService:
         finally:
             self.manager.operations.release()
         with self.lock:
+            changed = (value['workspaces'] != self.snapshot['workspaces']
+                       or value.get('observation_error') != self.snapshot.get('observation_error'))
             self.snapshot = value
+            if changed:
+                self.notify()
 
     def observe(self):
         while not self.stopped.wait(1):
@@ -72,6 +79,50 @@ class ControlService:
         with self.lock:
             return copy.deepcopy({**self.snapshot, 'manager': self.manager.info,
                                   'jobs': list(self.jobs.values())})
+
+    @staticmethod
+    def offer(queue, value):
+        if queue.full():
+            queue.get_nowait()
+        queue.put_nowait(value)
+
+    def notify(self):
+        """Called under lock; one pending snapshot per client, never an event backlog."""
+        if self.streams_closed:
+            return
+        # Serialize once and share the string across subscribers; each client then
+        # sends the same payload without re-dumping the snapshot.
+        value = json.dumps(self.state(), ensure_ascii=False)
+        for queue, loop in self.subscribers.items():
+            loop.call_soon_threadsafe(self.offer, queue, value)
+
+    def close_streams(self):
+        with self.lock:
+            self.accepting = False
+            self.streams_closed = True
+            for queue, loop in self.subscribers.items():
+                loop.call_soon_threadsafe(self.offer, queue, None)
+
+    async def events(self):
+        queue = asyncio.Queue(maxsize=1)
+        with self.lock:
+            if self.streams_closed:
+                return
+            self.subscribers[queue] = asyncio.get_running_loop()
+            queue.put_nowait(json.dumps(self.state(), ensure_ascii=False))
+        try:
+            while True:
+                try:
+                    value = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield ': heartbeat\n\n'
+                    continue
+                if value is None:
+                    return
+                yield 'event: state\ndata: ' + value + '\n\n'
+        finally:
+            with self.lock:
+                self.subscribers.pop(queue, None)
 
     def submit(self, name, action, work):
         with self.lock:
@@ -87,6 +138,7 @@ class ControlService:
                    'state': 'queued', 'accepted_at': now(), 'started_at': None,
                    'finished_at': None, 'error': None, 'result': None}
             self.jobs[job['id']] = job
+            self.notify()
             self.executor.submit(self.execute, job['id'], work)
             return copy.deepcopy(job)
 
@@ -94,6 +146,7 @@ class ControlService:
         with self.lock:
             job = self.jobs[job_id]
             job.update(state='running', started_at=now())
+            self.notify()
         try:
             with self.manager.operations:
                 result = work()
@@ -109,8 +162,10 @@ class ControlService:
         self.refresh()
         with self.lock:
             job.update(state=outcome, result=result, error=error, finished_at=now())
+            self.notify()
 
     def close(self):
+        self.close_streams()
         with self.lock:
             self.accepting = False
         self.stopped.set()
@@ -196,6 +251,11 @@ def create_app(manager, origin, on_ready=None):
     @app.get('/api/state')
     async def state():
         return app.state.control.state()
+
+    @app.get('/api/events')
+    async def events():
+        return StreamingResponse(app.state.control.events(), media_type='text/event-stream',
+                                 headers={'X-Accel-Buffering': 'no'})
 
     @app.get('/api/jobs/{job_id}')
     async def job(job_id: str):

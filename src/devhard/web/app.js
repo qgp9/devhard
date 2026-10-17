@@ -24,17 +24,17 @@ async function command(name, component, action, body={}) {
   try {
     const job=await api(`/api/workspaces/${encodeURIComponent(name)}/${component}/${action}`,'POST',body);
     notice('accepted',{name,action:job.action});
-    await poll();
+    updateControls();
   } catch(error) { notice('rawError',{message:error.message},true); }
 }
 async function submitStopAll() {
-  stoppingAll=true;
+  stoppingAll=true; updateControls();
   try {
     const job=await api('/api/workspaces/stop_all','POST',{});
     notice('accepted',{name:t('allWorkspaces'),action:job.action});
-    await poll();
+    updateControls();
   } catch(error) { notice('rawError',{message:error.message},true); }
-  finally { stoppingAll=false; }
+  finally { stoppingAll=false; updateControls(); }
 }
 let currentConfirm=null;
 function renderConfirm() {
@@ -170,22 +170,66 @@ function render() {
   if(!state.jobs.length) jobs.append(el('li',t('noJobs'),'muted'));
   $('#manager-info').textContent=`${state.manager.api_url}\n${t('data')}: ${state.manager.data_root}\nPID: ${state.manager.pid}`;
 }
-let polling=false;
-async function poll() {
-  if(polling) return; polling=true;
-  try {
-    state=await api('/api/state'); connected=true;
-    if(connectionLost) { $('#notice').hidden=true; currentNotice=null; }
-    connectionLost=false;
-    $('#connection').textContent=t('online'); $('#connection').className='online';
-    $('#observed').textContent=state.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
-    if(state.observation_error) notice('observationFailed',{message:state.observation_error},true);
-    render();
-  } catch(error) {
-    connected=false; connectionLost=true; $('#connection').textContent=t('offline'); $('#connection').className='offline';
-    notice('connectionFailed',{},true);
-    if(state) render();
-  } finally { polling=false; const globalBusy=Boolean(state?.jobs?.some(j=>j.workspace==='*' && ['queued','running'].includes(j.state))); $('#new-workspace').disabled=!connected; $('#save-workspace').disabled=!connected || submitting; $('#stop-all-workspaces').disabled=!connected || !state?.workspaces?.length || globalBusy || stoppingAll; }
+function updateControls() {
+  const globalBusy=Boolean(state?.jobs?.some(j=>j.workspace==='*' && ['queued','running'].includes(j.state)));
+  $('#new-workspace').disabled=!connected;
+  $('#save-workspace').disabled=!connected || submitting;
+  $('#stop-all-workspaces').disabled=!connected || !state?.workspaces?.length || globalBusy || stoppingAll;
+}
+function receiveState(value) {
+  state=value; connected=true;
+  if(connectionLost) { $('#notice').hidden=true; currentNotice=null; }
+  connectionLost=false;
+  $('#connection').textContent=t('online'); $('#connection').className='online';
+  $('#observed').textContent=state.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
+  if(state.observation_error) notice('observationFailed',{message:state.observation_error},true);
+  render(); updateControls();
+}
+function disconnected() {
+  connected=false; connectionLost=true;
+  $('#connection').textContent=t('offline'); $('#connection').className='offline';
+  notice('connectionFailed',{},true);
+  if(state) render();
+  updateControls();
+}
+async function watchState() {
+  let retry=1000;
+  while(true) {
+    const controller=new AbortController();
+    let idle, reader, unauthorized=false;
+    const touch=()=>{ clearTimeout(idle); idle=setTimeout(()=>controller.abort(),35000); };
+    try {
+      touch();
+      const response=await fetch('/api/events',{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});
+      unauthorized=response.status===401 || response.status===403;
+      if(!response.ok || !response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('State stream unavailable');
+      reader=response.body.getReader();
+      const decoder=new TextDecoder(); let buffer='';
+      while(true) {
+        const {done,value}=await reader.read();
+        if(done) throw new Error('State stream closed');
+        touch();
+        buffer=(buffer+decoder.decode(value,{stream:true})).replace(/\r\n/g,'\n');
+        let boundary;
+        while((boundary=buffer.indexOf('\n\n'))!==-1) {
+          const frame=buffer.slice(0,boundary); buffer=buffer.slice(boundary+2);
+          const lines=frame.split('\n');
+          if(!lines.includes('event: state')) continue; // Includes heartbeat comments.
+          const data=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');
+          let parsed; try { parsed=JSON.parse(data); } catch { continue; } // Skip one malformed frame; keep the live stream.
+          receiveState(parsed); retry=1000;
+        }
+      }
+    } catch(error) {
+      disconnected();
+    } finally {
+      clearTimeout(idle); controller.abort();
+      if(reader) { try { await reader.cancel(); } catch {} reader.releaseLock(); }
+    }
+    // A restarted Manager has a new token; only a page refresh can bootstrap it.
+    if(unauthorized) return;
+    await new Promise(resolve=>setTimeout(resolve,retry)); retry=Math.min(retry*2,10000);
+  }
 }
 $('#new-workspace').addEventListener('click',()=>edit());
 $('#stop-all-workspaces').addEventListener('click',stopAllWorkspaces);
@@ -211,7 +255,7 @@ form.addEventListener('submit',async(event)=>{
   const config={schema_version:1,name,ssh:{host:form.elements.host.value.trim()},bookmarks:bookmarkDraft.map(bookmark=>({...bookmark})),browser:{profile:'chrome-profile',restore_session:form.elements.restore.checked,executable:form.elements.executable.value.trim() || 'auto'}};
   try {
     await api(editing?`/api/workspaces/${encodeURIComponent(name)}`:'/api/workspaces',editing?'PUT':'POST',config);
-    $('#editor').hidden=true; notice('accepted',{name,action:editing?'update':'register'}); await poll();
+    $('#editor').hidden=true; notice('accepted',{name,action:editing?'update':'register'}); updateControls();
   } catch(error) { notice('rawError',{message:error.message},true); }
   finally { submitting=false; $('#save-workspace').disabled=!connected; }
 });
@@ -229,36 +273,118 @@ function translate() {
   if(state) render();
 }
 $('#language').addEventListener('change',event=>{ DevHardI18n.select(event.target.value); translate(); });
-const themeToggle=$('#theme-toggle'), themeMenuButton=$('#theme-menu-button'), themeMenu=$('#theme-menu'), themeSelect=$('#theme');
-function closeThemeMenu() { themeMenu.hidden=true; themeMenuButton.setAttribute('aria-expanded','false'); }
+let dropdownSeq=0;
+function createDropdown(config) {
+  const trigger=config.trigger, popup=config.popup;
+  popup.id=popup.id || 'dropdown-'+(++dropdownSeq);
+  const options=()=>[...popup.querySelectorAll('[role="option"]')];
+  trigger.setAttribute('aria-haspopup','listbox');
+  trigger.setAttribute('aria-controls',popup.id);
+  trigger.setAttribute('aria-expanded','false');
+  let typeBuffer='', typeTimer=null;
+  function close(focusTrigger) {
+    if(popup.hidden) return;
+    popup.hidden=true; trigger.setAttribute('aria-expanded','false');
+    if(focusTrigger) trigger.focus();
+  }
+  function focusIndex(index) {
+    const list=options(); if(!list.length) return;
+    list[Math.max(0,Math.min(index,list.length-1))].focus();
+  }
+  function open() {
+    const current=String(config.value());
+    popup.hidden=false; trigger.setAttribute('aria-expanded','true');
+    focusIndex(options().findIndex(option=>option.dataset.value===current));
+  }
+  function select(option) { if(option) { config.onSelect(option.dataset.value); close(true); } }
+  function render() {
+    const current=String(config.value());
+    const active=document.activeElement;
+    const focused=popup.hidden || !active || active.parentElement!==popup ? null : active.dataset.value;
+    if(config.name) popup.setAttribute('aria-label',config.name());
+    popup.replaceChildren();
+    let label='';
+    for(const item of config.items()) {
+      const option=el('div',undefined,'menu-option'), selected=String(item.value)===current;
+      option.setAttribute('role','option'); option.tabIndex=-1;
+      option.dataset.value=item.value; option.setAttribute('aria-selected',String(selected));
+      const check=el('span','✓','menu-check'); check.setAttribute('aria-hidden','true');
+      option.append(check,el('span',item.label));
+      option.addEventListener('click',()=>select(option));
+      popup.append(option);
+      if(selected) label=item.label;
+    }
+    if(config.showLabel) trigger.replaceChildren(el('span',label));
+    // Rebuilding the options must not drop keyboard focus when the menu is open.
+    if(focused!==null) {
+      const restore=options().find(option=>option.dataset.value===focused)
+        || options().find(option=>option.getAttribute('aria-selected')==='true');
+      if(restore) restore.focus();
+    }
+  }
+  trigger.addEventListener('click',()=>{ if(popup.hidden) open(); else close(true); });
+  trigger.addEventListener('keydown',event=>{
+    if(event.key==='ArrowDown'||event.key==='ArrowUp') { event.preventDefault(); if(popup.hidden) open(); }
+    else if(event.key==='Escape') close(true);
+  });
+  popup.addEventListener('keydown',event=>{
+    const list=options(), index=list.indexOf(document.activeElement);
+    if(event.key==='ArrowDown') { event.preventDefault(); focusIndex(index+1); }
+    else if(event.key==='ArrowUp') { event.preventDefault(); focusIndex(index-1); }
+    else if(event.key==='Home') { event.preventDefault(); focusIndex(0); }
+    else if(event.key==='End') { event.preventDefault(); focusIndex(list.length-1); }
+    else if(event.key==='Enter'||event.key===' ') { event.preventDefault(); select(list[index]); }
+    else if(event.key==='Escape') { event.preventDefault(); close(true); }
+    else if(event.key==='Tab') close(false);
+    else if(event.key.length===1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      typeBuffer+=event.key.toLowerCase();
+      clearTimeout(typeTimer); typeTimer=setTimeout(()=>{ typeBuffer=''; },500);
+      for(let step=1; step<=list.length; step++) {
+        const candidate=list[(index+step)%list.length];
+        if(candidate.lastElementChild.textContent.trim().toLowerCase().startsWith(typeBuffer)) { focusIndex((index+step)%list.length); break; }
+      }
+    }
+  });
+  document.addEventListener('click',event=>{
+    if(!popup.hidden && !popup.contains(event.target) && !trigger.contains(event.target)) close(false);
+  });
+  render();
+  return {render, close:()=>close(false)};
+}
+const themeToggle=$('#theme-toggle'), themeMenuButton=$('#theme-menu-button');
+const modeDropdown=createDropdown({
+  trigger:themeMenuButton, popup:$('#theme-menu'), showLabel:false,
+  name:()=>t('themeOptions'),
+  items:()=>[['system','themeSystem'],['light','themeLight'],['dark','themeDark']].map(([value,key])=>({value,label:t(key)})),
+  value:()=>DevHardTheme.readMode(),
+  onSelect:value=>{ DevHardTheme.setMode(value); renderTheme(); }
+});
+const schemeDropdown=createDropdown({
+  trigger:$('#scheme-trigger'), popup:$('#scheme-menu'), showLabel:true,
+  name:()=>t('colorTheme'),
+  items:()=>DevHardTheme.schemesFor(DevHardTheme.effectiveAppearance()).map(scheme=>({value:scheme.id,label:scheme.label})),
+  value:()=>DevHardTheme.readScheme(DevHardTheme.effectiveAppearance()),
+  onSelect:value=>{ DevHardTheme.setScheme(DevHardTheme.effectiveAppearance(),value); renderTheme(); }
+});
+const styleDropdown=createDropdown({
+  trigger:$('#style-trigger'), popup:$('#style-menu'), showLabel:true,
+  name:()=>t('styleLabel'),
+  items:()=>[['round','styleRound'],['flat','styleFlat'],['terminal','styleTerminal']].map(([value,key])=>({value,label:t(key)})),
+  value:()=>DevHardTheme.readStyle(),
+  onSelect:value=>{ DevHardTheme.setStyle(value); renderTheme(); }
+});
 function renderTheme() {
   const mode=DevHardTheme.readMode(), appearance=DevHardTheme.effectiveAppearance();
   themeToggle.textContent=mode==='system'?'◐':(appearance==='dark'?'☾':'☀︎');
   themeToggle.title=themeToggle.ariaLabel=t(appearance==='dark'?'switchToLight':'switchToDark');
   themeMenuButton.title=themeMenuButton.ariaLabel=t('themeOptions');
-  for(const item of themeMenu.querySelectorAll('[data-mode]')) item.setAttribute('aria-checked',String(item.dataset.mode===mode));
-  themeSelect.replaceChildren();
-  for(const scheme of DevHardTheme.schemesFor(appearance)) themeSelect.append(new Option(scheme.label,scheme.id));
-  themeSelect.value=DevHardTheme.readScheme(appearance);
+  modeDropdown.render(); schemeDropdown.render(); styleDropdown.render();
 }
 renderTheme();
 themeToggle.addEventListener('click',()=>{ DevHardTheme.setMode(DevHardTheme.effectiveAppearance()==='dark'?'light':'dark'); renderTheme(); });
-themeMenuButton.addEventListener('click',()=>{
-  if(!themeMenu.hidden) closeThemeMenu();
-  else { themeMenu.hidden=false; themeMenuButton.setAttribute('aria-expanded','true'); }
-});
-for(const item of themeMenu.querySelectorAll('[data-mode]')) item.addEventListener('click',()=>{ DevHardTheme.setMode(item.dataset.mode); closeThemeMenu(); renderTheme(); });
-document.addEventListener('click',event=>{
-  if(!themeMenu.hidden && !themeMenu.contains(event.target) && !themeMenuButton.contains(event.target)) closeThemeMenu();
-});
-document.addEventListener('keydown',event=>{ if(event.key==='Escape' && !themeMenu.hidden) { closeThemeMenu(); themeMenuButton.focus(); } });
-themeSelect.addEventListener('change',event=>{ DevHardTheme.setScheme(DevHardTheme.effectiveAppearance(),event.target.value); renderTheme(); });
 window.addEventListener('devhard:appearance',renderTheme);
-const styleSelect=$('#style');
-styleSelect.value=DevHardTheme.readStyle();
-styleSelect.addEventListener('change',event=>{ DevHardTheme.setStyle(event.target.value); styleSelect.value=DevHardTheme.readStyle(); });
 window.addEventListener('storage',event=>{
-  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.styleKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); DevHardTheme.applyStyle(); renderTheme(); styleSelect.value=DevHardTheme.readStyle(); }
+  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.styleKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); DevHardTheme.applyStyle(); renderTheme(); }
   if(event.key===DevHardI18n.storageKey || event.key===null) { DevHardI18n.select(event.newValue,false); translate(); }
 });
-translate(); poll(); setInterval(poll,1200);
+translate(); watchState();

@@ -26,9 +26,19 @@ def serve(store, port=0, open_browser=False):
             if open_browser:
                 webbrowser.open(url)
 
-        config = uvicorn.Config(create_app(manager, url, ready), log_level='warning',
+        app = create_app(manager, url, ready)
+
+        class Server(uvicorn.Server):
+            def handle_exit(self, sig, frame):
+                # End persistent responses before Uvicorn waits for connections.
+                control = getattr(app.state, 'control', None)
+                if control is not None:
+                    control.close_streams()
+                super().handle_exit(sig, frame)
+
+        config = uvicorn.Config(app, log_level='warning',
                                 proxy_headers=False, access_log=False, server_header=False)
-        server = uvicorn.Server(config)
+        server = Server(config)
         # Uvicorn handles shutdown, then re-raises the signal to the previous handler.
         # Keep DevHard's established graceful Ctrl-C/SIGTERM exit status of zero.
         previous = {sig: signal.signal(sig, lambda *_: None) for sig in (signal.SIGINT, signal.SIGTERM)}
