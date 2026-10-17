@@ -166,6 +166,11 @@ so an opt-in is the honest choice. A simple exposure policy for phones would be
 custom on `pointer:fine` and native on `pointer:coarse`, switched by a media
 query so only one control is ever in the tab order or the accessibility tree.
 
+**Custom controls must still meet accessibility requirements, and this has not
+been verified.** The component follows the ARIA patterns described above, but a
+dedicated accessibility review (keyboard, screen reader, high contrast) is still
+required; treat it as unverified until that is done.
+
 ## SSH tunnels
 
 Prepare key/ssh-agent authentication and verify the host key with an ordinary
