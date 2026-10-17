@@ -204,6 +204,10 @@ h2 {
   color:#24634b;
   background:#e9f3ec
 }
+.badge.info {
+  color:#2f5d9e;
+  background:#e7eefa
+}
 .badge.warn {
   color:#99631b;
   background:#fff3dc
@@ -211,6 +215,14 @@ h2 {
 .badge.bad {
   color:#a33d35;
   background:#fbeeea
+}
+.badge.idle {
+  color:#565f5b;
+  background:#e4e7e1
+}
+.badge.idle:before {
+  background:transparent;
+  box-shadow:inset 0 0 0 1.5px currentColor
 }
 .controls {
   display:flex;

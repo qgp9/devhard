@@ -16,7 +16,7 @@ async function api(path, method='GET', data) {
   return body;
 }
 function badge(title, value) {
-  const cls=['running','listening','succeeded'].includes(value)?'good':['unknown','queued','partial'].includes(value)?'warn':['error','failed'].includes(value)?'bad':'';
+  const cls=['listening','succeeded'].includes(value)?'good':value==='running'?'info':['unknown','queued','partial'].includes(value)?'warn':['error','failed'].includes(value)?'bad':['stopped','exited','cancelled'].includes(value)?'idle':'';
   return el('span',`${title ? title+' · ' : ''}${t(value)}`,`badge ${cls}`);
 }
 function button(text, handler, cls='') { const node=el('button',text,cls); node.type='button'; node.disabled=!connected; node.addEventListener('click',handler); return node; }
