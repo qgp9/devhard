@@ -82,7 +82,10 @@ function render() {
     }
     if(busy) { for(const b of [...controls.querySelectorAll('button'),...components.querySelectorAll('button')]) b.disabled=true; }
     card.append(top,states,controls,components);
-    if(busy) card.append(el('div',t('busy'),'busy'));
+    const progress=el('div',t('busy'),'busy');
+    progress.style.visibility=busy?'visible':'hidden';
+    progress.setAttribute('aria-hidden',String(!busy));
+    card.append(progress);
     const bookmarks=el('section',undefined,'bookmark-list'), heading=el('div',undefined,'section-heading');
     const canOpen=connected && !busy && workspace.status.browser==='running';
     const openAll=button(t('openAll'),()=>command(name,'bookmarks','open'));

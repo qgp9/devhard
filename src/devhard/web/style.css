@@ -358,6 +358,16 @@ summary {
   color:var(--muted)
 }
 #notice {
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  z-index:100;
+  width:max-content;
+  max-width:min(480px,calc(100vw - 40px));
+  max-height:40vh;
+  overflow:auto;
+  margin:0;
+  box-shadow:0 4px 18px #0002;
   padding:13px 16px;
   border-radius:7px;
   background:#e5efe6;
