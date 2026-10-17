@@ -229,36 +229,110 @@ function translate() {
   if(state) render();
 }
 $('#language').addEventListener('change',event=>{ DevHardI18n.select(event.target.value); translate(); });
-const themeToggle=$('#theme-toggle'), themeMenuButton=$('#theme-menu-button'), themeMenu=$('#theme-menu'), themeSelect=$('#theme');
-function closeThemeMenu() { themeMenu.hidden=true; themeMenuButton.setAttribute('aria-expanded','false'); }
+let dropdownSeq=0;
+function createDropdown(config) {
+  const trigger=config.trigger, popup=config.popup;
+  popup.id=popup.id || 'dropdown-'+(++dropdownSeq);
+  const options=()=>[...popup.querySelectorAll('[role="option"]')];
+  trigger.setAttribute('aria-haspopup','listbox');
+  trigger.setAttribute('aria-controls',popup.id);
+  trigger.setAttribute('aria-expanded','false');
+  let typeBuffer='', typeTimer=null;
+  function close(focusTrigger) {
+    if(popup.hidden) return;
+    popup.hidden=true; trigger.setAttribute('aria-expanded','false');
+    if(focusTrigger) trigger.focus();
+  }
+  function focusIndex(index) {
+    const list=options(); if(!list.length) return;
+    list[Math.max(0,Math.min(index,list.length-1))].focus();
+  }
+  function open() {
+    const current=String(config.value());
+    popup.hidden=false; trigger.setAttribute('aria-expanded','true');
+    focusIndex(options().findIndex(option=>option.dataset.value===current));
+  }
+  function select(option) { if(option) { config.onSelect(option.dataset.value); close(true); } }
+  function render() {
+    const current=String(config.value());
+    if(config.name) popup.setAttribute('aria-label',config.name());
+    popup.replaceChildren();
+    let label='';
+    for(const item of config.items()) {
+      const option=el('div',undefined,'menu-option'), selected=String(item.value)===current;
+      option.setAttribute('role','option'); option.tabIndex=-1;
+      option.dataset.value=item.value; option.setAttribute('aria-selected',String(selected));
+      const check=el('span','✓','menu-check'); check.setAttribute('aria-hidden','true');
+      option.append(check,el('span',item.label));
+      option.addEventListener('click',()=>select(option));
+      popup.append(option);
+      if(selected) label=item.label;
+    }
+    if(config.showLabel) trigger.replaceChildren(el('span',label));
+  }
+  trigger.addEventListener('click',()=>{ if(popup.hidden) open(); else close(true); });
+  trigger.addEventListener('keydown',event=>{
+    if(event.key==='ArrowDown'||event.key==='ArrowUp') { event.preventDefault(); if(popup.hidden) open(); }
+    else if(event.key==='Escape') close(true);
+  });
+  popup.addEventListener('keydown',event=>{
+    const list=options(), index=list.indexOf(document.activeElement);
+    if(event.key==='ArrowDown') { event.preventDefault(); focusIndex(index+1); }
+    else if(event.key==='ArrowUp') { event.preventDefault(); focusIndex(index-1); }
+    else if(event.key==='Home') { event.preventDefault(); focusIndex(0); }
+    else if(event.key==='End') { event.preventDefault(); focusIndex(list.length-1); }
+    else if(event.key==='Enter'||event.key===' ') { event.preventDefault(); select(list[index]); }
+    else if(event.key==='Escape') { event.preventDefault(); close(true); }
+    else if(event.key==='Tab') close(false);
+    else if(event.key.length===1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      typeBuffer+=event.key.toLowerCase();
+      clearTimeout(typeTimer); typeTimer=setTimeout(()=>{ typeBuffer=''; },500);
+      for(let step=1; step<=list.length; step++) {
+        const candidate=list[(index+step)%list.length];
+        if(candidate.lastElementChild.textContent.trim().toLowerCase().startsWith(typeBuffer)) { focusIndex((index+step)%list.length); break; }
+      }
+    }
+  });
+  document.addEventListener('click',event=>{
+    if(!popup.hidden && !popup.contains(event.target) && !trigger.contains(event.target)) close(false);
+  });
+  render();
+  return {render, close:()=>close(false)};
+}
+const themeToggle=$('#theme-toggle'), themeMenuButton=$('#theme-menu-button');
+const modeDropdown=createDropdown({
+  trigger:themeMenuButton, popup:$('#theme-menu'), showLabel:false,
+  name:()=>t('themeOptions'),
+  items:()=>[['system','themeSystem'],['light','themeLight'],['dark','themeDark']].map(([value,key])=>({value,label:t(key)})),
+  value:()=>DevHardTheme.readMode(),
+  onSelect:value=>{ DevHardTheme.setMode(value); renderTheme(); }
+});
+const schemeDropdown=createDropdown({
+  trigger:$('#scheme-trigger'), popup:$('#scheme-menu'), showLabel:true,
+  name:()=>t('colorTheme'),
+  items:()=>DevHardTheme.schemesFor(DevHardTheme.effectiveAppearance()).map(scheme=>({value:scheme.id,label:scheme.label})),
+  value:()=>DevHardTheme.readScheme(DevHardTheme.effectiveAppearance()),
+  onSelect:value=>{ DevHardTheme.setScheme(DevHardTheme.effectiveAppearance(),value); renderTheme(); }
+});
+const styleDropdown=createDropdown({
+  trigger:$('#style-trigger'), popup:$('#style-menu'), showLabel:true,
+  name:()=>t('styleLabel'),
+  items:()=>[['round','styleRound'],['flat','styleFlat'],['terminal','styleTerminal']].map(([value,key])=>({value,label:t(key)})),
+  value:()=>DevHardTheme.readStyle(),
+  onSelect:value=>{ DevHardTheme.setStyle(value); renderTheme(); }
+});
 function renderTheme() {
   const mode=DevHardTheme.readMode(), appearance=DevHardTheme.effectiveAppearance();
   themeToggle.textContent=mode==='system'?'◐':(appearance==='dark'?'☾':'☀︎');
   themeToggle.title=themeToggle.ariaLabel=t(appearance==='dark'?'switchToLight':'switchToDark');
   themeMenuButton.title=themeMenuButton.ariaLabel=t('themeOptions');
-  for(const item of themeMenu.querySelectorAll('[data-mode]')) item.setAttribute('aria-checked',String(item.dataset.mode===mode));
-  themeSelect.replaceChildren();
-  for(const scheme of DevHardTheme.schemesFor(appearance)) themeSelect.append(new Option(scheme.label,scheme.id));
-  themeSelect.value=DevHardTheme.readScheme(appearance);
+  modeDropdown.render(); schemeDropdown.render(); styleDropdown.render();
 }
 renderTheme();
 themeToggle.addEventListener('click',()=>{ DevHardTheme.setMode(DevHardTheme.effectiveAppearance()==='dark'?'light':'dark'); renderTheme(); });
-themeMenuButton.addEventListener('click',()=>{
-  if(!themeMenu.hidden) closeThemeMenu();
-  else { themeMenu.hidden=false; themeMenuButton.setAttribute('aria-expanded','true'); }
-});
-for(const item of themeMenu.querySelectorAll('[data-mode]')) item.addEventListener('click',()=>{ DevHardTheme.setMode(item.dataset.mode); closeThemeMenu(); renderTheme(); });
-document.addEventListener('click',event=>{
-  if(!themeMenu.hidden && !themeMenu.contains(event.target) && !themeMenuButton.contains(event.target)) closeThemeMenu();
-});
-document.addEventListener('keydown',event=>{ if(event.key==='Escape' && !themeMenu.hidden) { closeThemeMenu(); themeMenuButton.focus(); } });
-themeSelect.addEventListener('change',event=>{ DevHardTheme.setScheme(DevHardTheme.effectiveAppearance(),event.target.value); renderTheme(); });
 window.addEventListener('devhard:appearance',renderTheme);
-const styleSelect=$('#style');
-styleSelect.value=DevHardTheme.readStyle();
-styleSelect.addEventListener('change',event=>{ DevHardTheme.setStyle(event.target.value); styleSelect.value=DevHardTheme.readStyle(); });
 window.addEventListener('storage',event=>{
-  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.styleKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); DevHardTheme.applyStyle(); renderTheme(); styleSelect.value=DevHardTheme.readStyle(); }
+  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.styleKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); DevHardTheme.applyStyle(); renderTheme(); }
   if(event.key===DevHardI18n.storageKey || event.key===null) { DevHardI18n.select(event.newValue,false); translate(); }
 });
 translate(); poll(); setInterval(poll,1200);
