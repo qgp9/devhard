@@ -21,4 +21,7 @@ python3 -m unittest discover -s tests -v
 The probe checks duplicate-manager rejection, normal and forced manager exit,
 child survival, lock reacquisition, process rediscovery, Chrome profile reuse,
 and owned-process cleanup. Evidence is written to each run's `result.json`.
+Repeat `--http-url` to check multiple services through the same tunnel. SOCKS
+and HTTP checks run before manager exit, while the manager is stopped after
+both normal and forced exits, and after rediscovery.
 The probe is experimental code, not the public DevHard CLI.

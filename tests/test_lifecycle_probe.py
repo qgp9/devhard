@@ -67,6 +67,18 @@ class OwnershipTests(unittest.TestCase):
         with patch.object(probe.subprocess, 'run', return_value=result):
             self.assertIsNone(probe.snapshot(100))
 
+    def test_ssh_exit_reports_cause_without_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'ssh.log'
+            log.write_text('ssh: Could not resolve hostname unavailable.invalid\n')
+            with patch.object(probe, 'owned', return_value=False), \
+                 patch.object(probe, 'socks_ready') as handshake, \
+                 patch.object(probe.time, 'sleep') as sleep:
+                with self.assertRaisesRegex(RuntimeError, 'Could not resolve hostname'):
+                    probe.wait_tunnel({**self.record, 'port': 60000}, log)
+                handshake.assert_not_called()
+                sleep.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

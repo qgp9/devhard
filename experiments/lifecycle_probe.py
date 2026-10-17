@@ -81,6 +81,16 @@ def socks_ready(port: int) -> bool:
         return False
 
 
+def wait_tunnel(record: dict, log_path: Path) -> None:
+    def ready():
+        if not owned(record):
+            detail = log_path.read_text(errors='replace')[-2000:].strip()
+            raise RuntimeError(f'SSH exited or ownership changed: {detail}')
+        return socks_ready(record['port'])
+
+    wait_until(ready, timeout=15)
+
+
 def terminate_owned(record: dict) -> None:
     if not owned(record):
         if snapshot(record['pid']) is not None:
@@ -119,7 +129,7 @@ def manager(root: Path, launch: bool, chrome: str | None, host: str | None) -> i
                 ], marker)
                 records['ssh']['port'] = port
                 write_json(records_path, records)
-                wait_until(lambda: owned(records['ssh']) and socks_ready(port), timeout=15)
+                wait_tunnel(records['ssh'], root / 'ssh.log')
             if chrome:
                 profile = str(root / 'chrome-profile')
                 port = records.get('ssh', {}).get('port', 60999)
@@ -153,6 +163,23 @@ def run_probe(args) -> None:
         evidence['checks'].append(label)
         print(f'PASS {label}', flush=True)
 
+    def check_tunnel(records, phase):
+        if not args.ssh_host:
+            return
+        port = records['ssh']['port']
+        check(f'SOCKS handshake {phase}', socks_ready(port))
+        for url in args.http_url:
+            response = subprocess.run([
+                'curl', '--noproxy', '', '--proxy', f'socks5h://127.0.0.1:{port}',
+                '--fail', '--silent', '--show-error', '--max-time', '15',
+                '--output', os.devnull, '--write-out', '%{http_code}', url,
+            ], capture_output=True, text=True, timeout=20)
+            evidence.setdefault('http_results', []).append({
+                'phase': phase, 'url': url, 'status': response.stdout,
+                'returncode': response.returncode, 'error': response.stderr[-1000:],
+            })
+            check(f'remote HTTP {url} {phase}', response.returncode == 0)
+
     chrome = None
     if args.chrome:
         chrome = args.chrome_executable or ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -174,6 +201,9 @@ def run_probe(args) -> None:
             proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log, close_fds=True)
         processes.append(proc)
         wait_until(lambda: state_path.exists() or proc.poll() is not None, timeout=25)
+        if proc.poll() is not None:
+            detail = (root / 'manager.log').read_text(errors='replace')[-3000:].strip()
+            raise RuntimeError(f'Manager exited during startup ({proc.returncode}): {detail}')
         check('manager ready' if launch else 'manager reacquired lock', proc.poll() is None and state_path.exists())
         state = json.loads(state_path.read_text())
         check('all children discovered', all(state['discovered'].values()))
@@ -184,13 +214,16 @@ def run_probe(args) -> None:
         duplicate = subprocess.run([sys.executable, str(SCRIPT), 'manager', str(root)], timeout=5)
         check('duplicate manager rejected', duplicate.returncode == 73)
         records = json.loads((root / 'children.json').read_text())
+        check_tunnel(records, 'before manager exit')
         first.terminate()
         check('manager graceful exit', first.wait(timeout=5) == 0)
         check('children survive graceful exit', all(owned(r) for r in records.values()))
+        check_tunnel(records, 'after graceful exit')
         second = start()
         second.kill()
         check('manager forced exit', second.wait(timeout=5) == -signal.SIGKILL)
         check('children survive forced exit', all(owned(r) for r in records.values()))
+        check_tunnel(records, 'after forced exit')
         third = start()
         check('children did not inherit manager lock', third.poll() is None)
         if chrome:
@@ -199,14 +232,7 @@ def run_probe(args) -> None:
             ], stdin=subprocess.DEVNULL, capture_output=True, timeout=15)
             check('Chrome second launch returned to existing profile', repeated.returncode == 0 and owned(records['chrome']))
             evidence['chrome_second_launch'] = repeated.stdout.decode(errors='replace')[-500:]
-        if args.ssh_host:
-            check('SOCKS handshake after manager restart', socks_ready(records['ssh']['port']))
-            if args.http_url:
-                response = subprocess.run(['curl', '--noproxy', '', '--proxy', f'socks5h://127.0.0.1:{records["ssh"]["port"]}',
-                    '--fail', '--silent', '--show-error', '--max-time', '15', '--output', os.devnull,
-                    '--write-out', '%{http_code}', args.http_url], capture_output=True, text=True, timeout=20)
-                check('remote HTTP over SOCKS', response.returncode == 0)
-                evidence['http_status'] = response.stdout
+        check_tunnel(records, 'after manager restart')
         third.terminate()
         third.wait(timeout=5)
         evidence['children'] = records
@@ -241,7 +267,7 @@ def main():
     parser.add_argument('--chrome', action='store_true')
     parser.add_argument('--chrome-executable')
     parser.add_argument('--ssh-host')
-    parser.add_argument('--http-url')
+    parser.add_argument('--http-url', action='append', default=[], help='Repeat for multiple remote HTTP services')
     parser.add_argument('mode', nargs='?', default='probe', choices=['probe', 'manager', 'worker'])
     parser.add_argument('data', nargs='?')
     parser.add_argument('--launch', action='store_true')
