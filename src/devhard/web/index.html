@@ -21,7 +21,7 @@
         <section class="bookmark-editor" aria-labelledby="bookmarks-title">
           <div class="section-heading"><h3 id="bookmarks-title" data-i18n="bookmarks">Bookmarks</h3><button id="add-bookmark" type="button" data-i18n="addBookmark">＋ Bookmark</button></div>
           <p class="hint" data-i18n="bookmarkHelp">Give each bookmark a name, description and URL. Initial bookmarks open automatically only on the first launch.</p>
-          <div id="bookmark-fields"></div>
+          <div id="bookmark-fields" class="bookmark-editor-list"></div>
         </section>
         <label class="checkbox"><input name="restore" type="checkbox" checked><span data-i18n="restore">Restore the previous Chrome session on subsequent launches</span></label><p class="hint"><span data-i18n="restoreHelp">Initial bookmarks open only on the first launch. Later launches restore the previous session, or open a blank tab if restoration is off. Stop Chrome and SSH to change connection or browser settings.</span></p>
         <details><summary><span data-i18n="chromeSettings">Chrome executable settings</span></summary><label><span data-i18n="executable">Executable</span><input name="executable" value="auto" placeholder="auto"><small><span data-i18n="executableHelp">Use auto for discovery, or an absolute path to the executable.</span></small></label></details>
@@ -37,6 +37,16 @@
         <p id="confirm-message" class="modal-message"></p>
         <div class="modal-actions"><button id="confirm-cancel" type="button"></button><button id="confirm-ok" class="primary" type="button"></button></div>
       </div>
+    </div>
+    <div id="bookmark-modal" class="modal-backdrop" hidden>
+      <form id="bookmark-form" class="modal" role="dialog" aria-modal="true" aria-labelledby="bookmark-modal-title">
+        <h3 id="bookmark-modal-title"></h3>
+        <label><span data-i18n="bookmarkName">Name</span><input name="name" required maxlength="512"></label>
+        <label><span data-i18n="bookmarkUrl">URL</span><input name="url" type="url" required maxlength="8192"></label>
+        <label><span data-i18n="description">Description (optional)</span><textarea name="description" rows="2" maxlength="2000"></textarea></label>
+        <label class="checkbox"><input name="initial" type="checkbox"><span data-i18n="initialOption">Initial · Open once on the first launch</span></label>
+        <div class="modal-actions"><button id="bookmark-cancel" type="button" data-i18n="cancel">Cancel</button><button class="primary" type="submit" data-i18n="save">Save</button></div>
+      </form>
     </div>
   </main>
 </body>

@@ -44,38 +44,65 @@ function renderConfirm() {
 }
 function openConfirm(descriptor) { currentConfirm=descriptor; renderConfirm(); $('#confirm').hidden=false; $('#confirm-cancel').focus(); }
 function closeConfirm() { $('#confirm').hidden=true; currentConfirm=null; }
+function backdropClose(container, close) {
+  let armed=false;
+  container.addEventListener('mousedown',event=>{ armed=event.target===container; });
+  container.addEventListener('mouseup',event=>{ if(event.target!==container) armed=false; });
+  container.addEventListener('click',event=>{ if(armed && event.target===container) close(); armed=false; });
+}
 function stopAllWorkspaces() {
   const active=(state?.workspaces||[]).filter(w=>['running','listening'].includes(w.status.tunnel) || w.status.browser==='running').length;
   if(active) return openConfirm({titleKey:'stopAllTitle',messageKey:'stopAllBody',params:{count:active},okKey:'stopAll',onConfirm:submitStopAll});
   submitStopAll();
 }
-function bookmarkField(labelKey, field, value, type='text') {
-  const label=el('label'), caption=el('span',t(labelKey)); caption.dataset.i18n=labelKey;
-  const input=el(type==='textarea'?'textarea':'input'); input.dataset.field=field;
-  if(type==='textarea') input.rows=2; else input.type=type;
-  input.value=value; if(field==='name' || field==='url') input.required=true;
-  input.maxLength=field==='name'?512:field==='description'?2000:8192;
-  label.append(caption,input); return label;
+let bookmarkDraft=[], bookmarkEditIndex=null;
+function renderBookmarkDraft() {
+  const list=$('#bookmark-fields'); list.replaceChildren();
+  if(!bookmarkDraft.length) { list.append(el('p',t('noBookmarks'),'hint')); return; }
+  bookmarkDraft.forEach((bookmark,index)=>{
+    const row=el('div',undefined,'bookmark-editor-item'), content=el('div',undefined,'bookmark-content');
+    const title=el('div',undefined,'bookmark-title'); title.append(el('strong',bookmark.name));
+    if(bookmark.initial) { const tag=el('span',t('initialTag'),'initial-tag'); tag.title=t('initialHelp'); title.append(tag); }
+    content.append(title);
+    if(bookmark.description) content.append(el('p',bookmark.description,'bookmark-description'));
+    content.append(el('div',bookmark.url,'bookmark-url'));
+    const actions=el('div',undefined,'bookmark-editor-actions');
+    const up=button('↑',()=>moveBookmark(index,-1),'icon'); up.disabled=!connected || index===0;
+    up.title=t('moveUp'); up.setAttribute('aria-label',t('moveUp'));
+    const down=button('↓',()=>moveBookmark(index,1),'icon'); down.disabled=!connected || index===bookmarkDraft.length-1;
+    down.title=t('moveDown'); down.setAttribute('aria-label',t('moveDown'));
+    const editButton=button(t('edit'),()=>openBookmarkModal(index),'edit');
+    const removeButton=button(t('remove'),()=>removeBookmark(index),'edit');
+    actions.append(up,down,editButton,removeButton); row.append(content,actions); list.append(row);
+  });
 }
-function addBookmark(bookmark={name:'',description:'',url:'',initial:false}) {
-  const row=el('div',undefined,'bookmark-editor-row');
-  row.append(bookmarkField('bookmarkName','name',bookmark.name),bookmarkField('bookmarkUrl','url',bookmark.url,'url'),bookmarkField('description','description',bookmark.description,'textarea'));
-  const footer=el('div',undefined,'bookmark-editor-footer'), label=el('label',undefined,'checkbox');
-  const check=el('input'); check.type='checkbox'; check.dataset.field='initial'; check.checked=bookmark.initial;
-  const caption=el('span',t('initialOption')); caption.dataset.i18n='initialOption'; label.append(check,caption);
-  const remove=button(t('remove'),()=>row.remove()); remove.dataset.i18n='remove';
-  footer.append(label,remove); row.append(footer); $('#bookmark-fields').append(row);
+function moveBookmark(index,delta) {
+  const target=index+delta;
+  if(target<0 || target>=bookmarkDraft.length) return;
+  [bookmarkDraft[index],bookmarkDraft[target]]=[bookmarkDraft[target],bookmarkDraft[index]];
+  renderBookmarkDraft();
 }
+function removeBookmark(index) { bookmarkDraft.splice(index,1); renderBookmarkDraft(); }
+function openBookmarkModal(index=null) {
+  bookmarkEditIndex=index;
+  const bookmark=index===null?{name:'',url:'',description:'',initial:false}:bookmarkDraft[index];
+  $('#bookmark-modal-title').textContent=t(index===null?'newBookmark':'editBookmark');
+  const fields=$('#bookmark-form').elements;
+  fields.name.value=bookmark.name; fields.url.value=bookmark.url;
+  fields.description.value=bookmark.description; fields.initial.checked=bookmark.initial;
+  $('#bookmark-modal').hidden=false; fields.name.focus();
+}
+function closeBookmarkModal() { $('#bookmark-modal').hidden=true; bookmarkEditIndex=null; }
 function edit(config=null, locked=false) {
   editing=Boolean(config); form.reset();
   form.elements.name.readOnly=editing;
   form.elements.host.readOnly=locked; form.elements.executable.readOnly=locked; form.elements.restore.disabled=locked;
-  $('#bookmark-fields').replaceChildren();
+  bookmarkDraft=config?config.bookmarks.map(bookmark=>({...bookmark})):[];
+  renderBookmarkDraft();
   if(config) {
     form.elements.name.value=config.name; form.elements.host.value=config.ssh.host;
     form.elements.restore.checked=config.browser.restore_session;
     form.elements.executable.value=config.browser.executable;
-    config.bookmarks.forEach(addBookmark);
   }
   $('#editor-title').textContent=t(editing?'editTitle':'newTitle');
   $('#save-workspace').textContent=t(editing?'save':'register');
@@ -160,14 +187,26 @@ $('#new-workspace').addEventListener('click',()=>edit());
 $('#stop-all-workspaces').addEventListener('click',stopAllWorkspaces);
 $('#confirm-cancel').addEventListener('click',closeConfirm);
 $('#confirm-ok').addEventListener('click',()=>{ const action=currentConfirm?.onConfirm; closeConfirm(); action?.(); });
-$('#confirm').addEventListener('click',event=>{ if(event.target===$('#confirm')) closeConfirm(); });
-document.addEventListener('keydown',event=>{ if(event.key==='Escape' && currentConfirm) closeConfirm(); });
-$('#add-bookmark').addEventListener('click',()=>addBookmark());
+backdropClose($('#confirm'),closeConfirm);
+$('#add-bookmark').addEventListener('click',()=>openBookmarkModal());
+$('#bookmark-cancel').addEventListener('click',closeBookmarkModal);
+backdropClose($('#bookmark-modal'),closeBookmarkModal);
+$('#bookmark-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  const fields=event.target.elements;
+  const bookmark={name:fields.name.value.trim(),url:fields.url.value.trim(),description:fields.description.value.trim(),initial:fields.initial.checked};
+  if(bookmarkEditIndex===null) bookmarkDraft.push(bookmark); else bookmarkDraft[bookmarkEditIndex]=bookmark;
+  closeBookmarkModal(); renderBookmarkDraft();
+});
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape') return;
+  if(currentConfirm) closeConfirm(); else if(!$('#bookmark-modal').hidden) closeBookmarkModal();
+});
 $('#cancel-edit').addEventListener('click',()=>{$('#editor').hidden=true;});
 form.addEventListener('submit',async(event)=>{
   event.preventDefault(); if(submitting) return; submitting=true; $('#save-workspace').disabled=true;
   const name=form.elements.name.value;
-  const config={schema_version:1,name,ssh:{host:form.elements.host.value.trim()},bookmarks:[...$('#bookmark-fields').children].map(row=>({name:row.querySelector('[data-field=name]').value.trim(),url:row.querySelector('[data-field=url]').value.trim(),description:row.querySelector('[data-field=description]').value.trim(),initial:row.querySelector('[data-field=initial]').checked})),browser:{profile:'chrome-profile',restore_session:form.elements.restore.checked,executable:form.elements.executable.value.trim() || 'auto'}};
+  const config={schema_version:1,name,ssh:{host:form.elements.host.value.trim()},bookmarks:bookmarkDraft.map(bookmark=>({...bookmark})),browser:{profile:'chrome-profile',restore_session:form.elements.restore.checked,executable:form.elements.executable.value.trim() || 'auto'}};
   try {
     await api(editing?`/api/workspaces/${encodeURIComponent(name)}`:'/api/workspaces',editing?'PUT':'POST',config);
     $('#editor').hidden=true; notice('accepted',{name,action:editing?'update':'register'}); await poll();
@@ -182,6 +221,8 @@ function translate() {
   $('#observed').textContent=state?.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
   if(currentNotice) notice(currentNotice.key,currentNotice.params,currentNotice.failure);
   renderConfirm();
+  if(!$('#editor').hidden) renderBookmarkDraft();
+  if(!$('#bookmark-modal').hidden) $('#bookmark-modal-title').textContent=t(bookmarkEditIndex===null?'newBookmark':'editBookmark');
   if(state) render();
 }
 $('#language').addEventListener('change',event=>{ DevHardI18n.select(event.target.value); translate(); });

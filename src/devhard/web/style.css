@@ -279,8 +279,11 @@ h2 {
 .initial-tag { border:1px solid #d6ddcf; border-radius:4px; padding:2px 5px; font-size:10px; color:var(--muted); }
 .bookmark-description { margin:5px 0; font-size:12px; color:var(--muted); white-space:pre-wrap; }
 .bookmark-url { margin-top:5px; font-size:11px; color:var(--muted); }
-.bookmark-editor-row { border:1px solid var(--line); border-radius:8px; padding:3px 16px 10px; margin:15px 0; }
-.bookmark-editor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.bookmark-editor-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+.bookmark-editor-item { display:flex; align-items:center; gap:12px; padding:10px 14px; border:1px solid var(--line); border-radius:8px; }
+.bookmark-editor-actions { display:flex; gap:6px; flex-shrink:0; }
+.bookmark-editor-actions button { font-size:12px; padding:5px 8px; }
+.bookmark-editor-actions .icon { font-size:13px; line-height:1; padding:5px 9px; }
 .error {
   font-size:12px;
   line-height:1.6;
