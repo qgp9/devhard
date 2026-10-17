@@ -7,10 +7,16 @@ name = "devhard"
 version = "0.1.0.dev1"
 description = "Workspace manager for independent Chrome profiles and SSH tunnels"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
+
+[project.optional-dependencies]
+dev = ["httpx>=0.28,<1"]
 
 [project.scripts]
 devhard = "devhard.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+devhard = ["web/*.html", "web/*.css", "web/*.js"]

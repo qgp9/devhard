@@ -11,7 +11,7 @@ From the repository root:
 # macOS: isolated VM, preserving the current Docker context and SSH config
 colima start --profile devhard-tests --cpus 2 --memory 2 --disk 10 \
   --activate=false --ssh-config=false --mount "$PWD:w"
-mise run fixture -- up
+mise run fixture -- up --context colima-devhard-tests
 mise run fixture -- check
 mise run fixture -- probe --chrome
 mise run fixture -- status
@@ -20,6 +20,8 @@ colima stop --profile devhard-tests
 ```
 
 An existing Docker engine can be selected with `up --context CONTEXT_NAME`.
+Without this option, `up` uses the current Docker context; it does not require
+Colima. Docker Desktop and Linux Docker Engine can provide the same interface.
 Subsequent commands use the saved context. `probe` runs the M2 SSH lifecycle
 checks; `--chrome` also runs M3 with real visible native Chrome windows and
 asserts the server identity inside loaded documents. Chrome remains on the host.

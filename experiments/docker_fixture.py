@@ -62,6 +62,7 @@ def up(context):
     BASE.mkdir(mode=0o700, exist_ok=True)
     if ACTIVE.exists():
         raise RuntimeError('Fixture already recorded; use check or down first')
+    context = context or run(['docker', 'context', 'show'], capture_output=True).stdout.strip()
     docker({'context': context}, 'build', '-t', IMAGE,
            str(REPO / 'tests/fixtures/ssh-web'), capture=False)
     run_id = uuid.uuid4().hex[:12]
@@ -166,7 +167,7 @@ def probe(state, chrome):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('up', 'check', 'probe', 'down', 'status'))
-    parser.add_argument('--context', default='colima-devhard-tests', help='Docker context for up')
+    parser.add_argument('--context', help='Docker context for up (default: current context)')
     parser.add_argument('--chrome', action='store_true', help='also run native Chrome probe')
     args = parser.parse_args()
     if args.action == 'up':

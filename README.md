@@ -2,20 +2,23 @@
 
 Workspace launcher for independent Chrome profiles and SSH SOCKS5 tunnels.
 
-M3 implements the data store, workspace registry, Manager lock, port reservations,
-independent SSH/Chrome controls and workspace Start All/Stop All.
+M4 implements the data store, workspace registry, Manager lock, port reservations,
+independent SSH/Chrome controls, workspace Start All/Stop All and a local management UI.
 Product requirements and development records live in the sibling `../notes/`
-directory. The HTTP API and management UI arrive in M4.
+directory.
 
 ## Development
 
-Python is pinned to **3.13.16** by `mise.toml`. Python code uses only the standard
-library. Tunnel controls require OpenSSH, `ps`, and `lsof`; macOS process identity
+Python is pinned to **3.13.16** by `mise.toml`. The HTTP adapter uses FastAPI and
+Uvicorn; core process/storage code uses the standard library. `uv.lock` records
+resolved dependencies, and mise activates the project `.venv`.
+Tunnel controls require OpenSSH, `ps`, and `lsof`; macOS process identity
 uses system libproc and normal application quit uses AppKit through ctypes. Linux execution is scheduled for M5.
 
 ```sh
 mise trust
 mise install
+mise run setup
 mise run test
 mise run devhard -- --help
 ```
@@ -27,16 +30,75 @@ use `~/.devhard`. Workspace names use lowercase letters, digits, `_` and `-`.
 mise run devhard -- --data-dir .devhard workspace add dev-a --ssh-host dev-a --tab http://127.0.0.1:3000
 mise run devhard -- --data-dir .devhard workspace list
 mise run devhard -- --data-dir .devhard workspace show dev-a
-mise run devhard -- --data-dir .devhard manager run
+mise run devhard -- --data-dir .devhard manager run --open
 # In another terminal:
 mise run devhard -- --data-dir .devhard manager status
 ```
 
-`manager run` prints a JSON ready snapshot and stays in the foreground until
-Ctrl-C or SIGTERM. A second Manager for the same physical data directory exits
+`manager run` serves the UI on `127.0.0.1` at an automatically selected HTTP port,
+prints the `api_url` in its JSON ready snapshot, and stays in the foreground until
+Ctrl-C or SIGTERM. `--open` opens that address in the normal default browser.
+Use `--port 61400` for a fixed management port. The HTTP port is separate from
+workspace SOCKS reservations. A second Manager for the same physical data directory exits
 with code 73. `workspace add` takes the same lock and currently requires the
 foreground Manager to be stopped; read-only list/show/status work while it runs.
-The HTTP client path for mutations will be added with the API.
+Use the UI/API to mutate while the foreground Manager is running.
+
+## Management UI and API
+
+Open the printed `api_url` in one or more ordinary local browser tabs/windows.
+Use **＋ 워크스페이스** to register an SSH host and one initial HTTP(S) URL per
+line, then **전체 시작** to start its tunnel and Chrome. SSH and Chrome can also
+be started, stopped or restarted separately. **전체 종료** stops both and releases
+the reserved port while preserving the profile. Stop both before editing settings.
+Initial URLs do not replace a previously restored session; disable session
+restoration to open the configured URLs on every launch.
+
+Accepted requests appear as queued/running jobs, followed by completion, partial
+success or failure in the shared activity list. Partial Start All retains a
+healthy SSH tunnel if Chrome cannot start. Polling reads cached observations
+without process-control side effects and remains responsive during commands.
+Observations can lag a command; the shared activity list shows work in progress.
+Recent runtime errors and unknown process states remain visible.
+
+Closing the UI or stopping the Manager preserves running children. On Manager
+restart, reload the management page (or open the new URL if using an automatic
+port). Process/runtime state is rediscovered; job history is in memory for the
+current Manager run, with at most 100 recent entries and 32 unfinished commands.
+Graceful shutdown waits for an active command and cancels queued commands.
+
+All API calls require `Authorization: Bearer TOKEN`. The same-origin HTML page
+bootstraps a fresh token for each Manager run; tokens are not placed in URLs,
+cookies or persistent runtime files. The exact loopback Host is checked on all
+requests; any supplied Origin must match, and mutation requests require the
+matching Origin plus JSON content type. No CORS grants or proxy-header trust are
+enabled. HTML/assets/API responses use no-store and restrictive CSP/frame headers.
+This protects against arbitrary web pages; trusted local programs can access
+the HTML bootstrap. This is a single-user local service, not a remote deployment.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | `/api/state` | Manager, observed workspaces and recent jobs |
+| GET | `/api/jobs/{id}` | One job's current state/outcome |
+| POST | `/api/workspaces` | Register a version-1 workspace configuration |
+| PUT | `/api/workspaces/{name}` | Replace settings of a stopped workspace |
+| POST | `/api/workspaces/{name}/workspace/{start_all,stop_all}` | Combined control |
+| POST | `/api/workspaces/{name}/{tunnel,browser}/{start,stop,restart}` | Individual control |
+
+Control commands use an empty `{}` JSON body. Mutations return **202 Accepted**
+with a job and `Location` URL; this means queued, not successful execution. Poll
+until `succeeded`, `partial`, `failed` or `cancelled`. Invalid requests return
+400/413/415, unauthorized requests 401/403, a full queue 429. Errors during
+execution are recorded on the accepted job. Bodies are limited to 16 KiB.
+
+Real HTTP/SSH/Chrome verification against the running Docker fixture:
+
+```sh
+mise exec -- python experiments/api_probe.py --chrome
+```
+
+This starts isolated Managers, checks concurrent clients, shutdown/SIGKILL and
+rediscovery, token rotation, partial success, and cleanup in `.m4-runs/`.
 
 ## SSH tunnels
 
@@ -246,7 +308,7 @@ two independent SSH endpoints, each serving loopback HTTP apps on 3000 and 6767.
 With the dedicated Colima profile running:
 
 ```sh
-mise run fixture -- up
+mise run fixture -- up --context colima-devhard-tests
 mise run fixture -- check
 mise run fixture -- probe --chrome
 mise run fixture -- down

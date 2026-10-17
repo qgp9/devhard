@@ -3,9 +3,7 @@
 import argparse
 import json
 from pathlib import Path
-import signal
 import sys
-import threading
 
 from .config import DevHardError, WorkspaceConfig
 from .manager import AlreadyRunning, Manager, status
@@ -23,7 +21,9 @@ def main(argv=None):
     parser.add_argument('--data-dir', type=Path, help='data root (default: ~/.devhard)')
     commands = parser.add_subparsers(dest='command', required=True)
     manager_parser = commands.add_parser('manager').add_subparsers(dest='action', required=True)
-    manager_parser.add_parser('run', help='run the foreground Manager; Ctrl-C to exit')
+    run = manager_parser.add_parser('run', help='serve the local management UI; Ctrl-C to exit')
+    run.add_argument('--port', type=int, default=0, help='loopback HTTP port (default: automatic)')
+    run.add_argument('--open', action='store_true', help='open the UI in the normal default browser')
     manager_parser.add_parser('status', help='read OS lock state and last run metadata')
     workspace_parser = commands.add_parser('workspace').add_subparsers(dest='action', required=True)
     add = workspace_parser.add_parser('add')
@@ -79,15 +79,10 @@ def main(argv=None):
         elif args.action == 'status':
             emit(status(store))
         else:
-            stop = threading.Event()
-            previous = {sig: signal.signal(sig, lambda *_: stop.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
-            try:
-                with Manager(store) as manager:
-                    emit({**manager.info, 'workspaces': manager.restored})
-                    stop.wait()
-            finally:
-                for sig, handler in previous.items():
-                    signal.signal(sig, handler)
+            if not 0 <= args.port <= 65535:
+                raise DevHardError('port must be in 0..65535')
+            from .server import serve
+            return serve(store, args.port, args.open)
         return 0
     except TunnelError as error:
         print(json.dumps({'code': error.code, 'message': str(error)}, ensure_ascii=False), file=sys.stderr)

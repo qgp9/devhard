@@ -8,8 +8,8 @@ import subprocess
 import threading
 import uuid
 
-from .config import DevHardError, InvalidConfig
-from .store import Store, atomic_write, json_text
+from .config import DevHardError, InvalidConfig, WorkspaceConfig
+from .store import Store, atomic_write, json_text, workspace_toml
 from . import process
 from .tunnel import TunnelController, TunnelError
 from .browser import BrowserController
@@ -29,7 +29,7 @@ def open_lock(store):
 
 
 class Manager:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, *, initial_phase='ready'):
         self.store = store
         self.fd = None
         self.ready = False
@@ -39,6 +39,8 @@ class Manager:
         self.tunnels = TunnelController(store)
         self.browsers = BrowserController(store, self.tunnels)
         self.operations = threading.RLock()
+        self.api_url = None
+        self.initial_phase = initial_phase
 
     def __enter__(self):
         if self.fd is not None:
@@ -81,7 +83,7 @@ class Manager:
                     pass
                 self.restored.append(self.view(config, self.store.runtime(config.name)))
             self.ready = True
-            self.publish('ready')
+            self.publish(self.initial_phase)
             return self
         except BaseException:
             self.ready = False
@@ -102,7 +104,7 @@ class Manager:
     def publish(self, phase):
         self.info = {'schema_version': 1, 'pid': os.getpid(), 'started_at': self.started_at,
                      'instance_id': self.instance_id, 'data_root': str(self.store.root),
-                     'phase': phase, 'api_url': None, 'restored_count': len(self.restored)}
+                     'phase': phase, 'api_url': self.api_url, 'restored_count': len(self.restored)}
         atomic_write(self.store.safe('runtime', 'manager.json'), json_text(self.info))
 
     def register(self, config):
@@ -126,6 +128,19 @@ class Manager:
             result = getattr(self.tunnels, action)(name)
             self.restored = [self.view(config, self.store.runtime(config.name)) for config in self.store.workspaces()]
             return result
+
+    def update(self, config):
+        """Edit a stopped workspace without replacing its profile or runtime."""
+        with self.operations:
+            if not self.ready:
+                raise DevHardError('Manager is not ready')
+            config = WorkspaceConfig.parse(config.as_dict())
+            self.store.workspace(config.name)
+            for controller in (self.tunnels, self.browsers):
+                if controller.observe(config.name)['state'] not in ('stopped', 'exited', 'error'):
+                    raise DevHardError('Stop both Chrome and SSH before editing this workspace')
+            atomic_write(self.store.safe('workspaces', config.name, 'config.toml'), workspace_toml(config))
+            return config
 
     def browser_action(self, name, action):
         with self.operations:

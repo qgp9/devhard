@@ -3,6 +3,11 @@ python = "3.13.16"
 
 [env]
 PYTHONPATH = "{{config_root}}/src"
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.setup]
+description = "Install locked runtime and test dependencies"
+run = "uv sync --locked --extra dev"
 
 [tasks.devhard]
 description = "Run the development CLI"
