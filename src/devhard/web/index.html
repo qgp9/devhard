@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="devhard-token" content="__CONTROL_TOKEN__">
   <title>DevHard · Workspaces</title>
+  <script src="/assets/theme.js"></script>
   <link rel="stylesheet" href="/assets/style.css">
   <script src="/assets/i18n.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </head>
 <body>
   <main>
-    <header class="masthead"><a class="brand" href="/">devhard<span class="brand-dot">●</span></a><div class="header-controls"><select id="language" aria-label="Language"><option value="en">English</option><option value="ko">한국어</option></select><span id="connection" role="status"><span data-i18n="connecting">Connecting…</span></span></div></header>
+    <header class="masthead"><a class="brand" href="/">devhard<span class="brand-dot">●</span></a><div class="header-controls"><select id="language" aria-label="Language"><option value="en">English</option><option value="ko">한국어</option></select><div class="theme-picker"><button id="theme-toggle" type="button"></button><button id="theme-menu-button" type="button" aria-haspopup="true" aria-expanded="false"><span aria-hidden="true">▾</span></button><div id="theme-menu" class="menu" role="menu" hidden><button type="button" role="menuitemradio" data-mode="system" aria-checked="false"><span class="menu-check" aria-hidden="true">✓</span><span data-i18n="themeSystem">System</span></button><button type="button" role="menuitemradio" data-mode="light" aria-checked="false"><span class="menu-check" aria-hidden="true">✓</span><span data-i18n="themeLight">Light</span></button><button type="button" role="menuitemradio" data-mode="dark" aria-checked="false"><span class="menu-check" aria-hidden="true">✓</span><span data-i18n="themeDark">Dark</span></button></div></div><select id="theme" aria-label="Theme"></select><span id="connection" role="status"><span data-i18n="connecting">Connecting…</span></span></div></header>
     <section class="intro"><div><p class="eyebrow">YOUR DEVELOPMENT SPACES</p><h1><span data-i18n="headline">Your workspaces, together.</span></h1><p class="lede"><span data-i18n="intro">Manage an independent Chrome profile and SSH connection for each server.</span></p></div><button id="new-workspace" class="primary" type="button"><span data-i18n="newWorkspace">＋ Workspace</span></button></section>
     <p id="notice" role="status" hidden></p>
     <section id="editor" class="panel" hidden aria-labelledby="editor-title">

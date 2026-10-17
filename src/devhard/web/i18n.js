@@ -3,6 +3,12 @@ const DevHardI18n = (() => {
   const messages = {
   "en": {
     "connecting": "Connecting…",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeOptions": "Theme options",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode",
     "headline": "Your workspaces, together.",
     "intro": "Manage an independent Chrome profile and SSH connection for each server.",
     "newWorkspace": "＋ Workspace",
@@ -100,6 +106,12 @@ const DevHardI18n = (() => {
   },
   "ko": {
     "connecting": "연결 중…",
+    "themeSystem": "시스템",
+    "themeLight": "밝게",
+    "themeDark": "어둡게",
+    "themeOptions": "테마 옵션",
+    "switchToDark": "다크 모드로 전환",
+    "switchToLight": "라이트 모드로 전환",
     "headline": "작업할 곳을, 한곳에서.",
     "intro": "서버마다 독립된 Chrome과 SSH 연결을 관리하세요.",
     "newWorkspace": "＋ 워크스페이스",

@@ -221,12 +221,38 @@ function translate() {
   $('#observed').textContent=state?.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
   if(currentNotice) notice(currentNotice.key,currentNotice.params,currentNotice.failure);
   renderConfirm();
+  renderTheme();
   if(!$('#editor').hidden) renderBookmarkDraft();
   if(!$('#bookmark-modal').hidden) $('#bookmark-modal-title').textContent=t(bookmarkEditIndex===null?'newBookmark':'editBookmark');
   if(state) render();
 }
 $('#language').addEventListener('change',event=>{ DevHardI18n.select(event.target.value); translate(); });
+const themeToggle=$('#theme-toggle'), themeMenuButton=$('#theme-menu-button'), themeMenu=$('#theme-menu'), themeSelect=$('#theme');
+function closeThemeMenu() { themeMenu.hidden=true; themeMenuButton.setAttribute('aria-expanded','false'); }
+function renderTheme() {
+  const mode=DevHardTheme.readMode(), appearance=DevHardTheme.effectiveAppearance();
+  themeToggle.textContent=mode==='system'?'◐':(appearance==='dark'?'☾':'☀︎');
+  themeToggle.title=themeToggle.ariaLabel=t(appearance==='dark'?'switchToLight':'switchToDark');
+  themeMenuButton.title=themeMenuButton.ariaLabel=t('themeOptions');
+  for(const item of themeMenu.querySelectorAll('[data-mode]')) item.setAttribute('aria-checked',String(item.dataset.mode===mode));
+  themeSelect.replaceChildren();
+  for(const scheme of DevHardTheme.schemesFor(appearance)) themeSelect.append(new Option(scheme.label,scheme.id));
+  themeSelect.value=DevHardTheme.readScheme(appearance);
+}
+renderTheme();
+themeToggle.addEventListener('click',()=>{ DevHardTheme.setMode(DevHardTheme.effectiveAppearance()==='dark'?'light':'dark'); renderTheme(); });
+themeMenuButton.addEventListener('click',()=>{
+  if(!themeMenu.hidden) closeThemeMenu();
+  else { themeMenu.hidden=false; themeMenuButton.setAttribute('aria-expanded','true'); }
+});
+for(const item of themeMenu.querySelectorAll('[data-mode]')) item.addEventListener('click',()=>{ DevHardTheme.setMode(item.dataset.mode); closeThemeMenu(); renderTheme(); });
+document.addEventListener('click',event=>{
+  if(!themeMenu.hidden && !themeMenu.contains(event.target) && !themeMenuButton.contains(event.target)) closeThemeMenu();
+});
+document.addEventListener('keydown',event=>{ if(event.key==='Escape' && !themeMenu.hidden) { closeThemeMenu(); themeMenuButton.focus(); } });
+themeSelect.addEventListener('change',event=>{ DevHardTheme.setScheme(DevHardTheme.effectiveAppearance(),event.target.value); renderTheme(); });
 window.addEventListener('storage',event=>{
+  if(event.key===DevHardTheme.modeKey || event.key===DevHardTheme.schemeKey('light') || event.key===DevHardTheme.schemeKey('dark') || event.key===null) { DevHardTheme.apply(); renderTheme(); }
   if(event.key===DevHardI18n.storageKey || event.key===null) { DevHardI18n.select(event.newValue,false); translate(); }
 });
 translate(); poll(); setInterval(poll,1200);
