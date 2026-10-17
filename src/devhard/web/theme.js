@@ -38,7 +38,8 @@
     if(!scheme || scheme.appearance!==appearance) return;
     store(schemeKey(appearance),id); apply();
   };
-  media.addEventListener('change', () => { if(readMode()==='system') apply(); });
+  const notify=() => window.dispatchEvent(new Event('devhard:appearance'));
+  media.addEventListener('change', () => { if(readMode()==='system') { apply(); notify(); } });
   window.DevHardTheme={registry, modeKey, schemeKey, schemesFor, readMode, effectiveAppearance, readScheme, setMode, setScheme, apply};
   apply();
 })();

@@ -32,15 +32,15 @@
     <section aria-labelledby="spaces-title"><div class="section-heading"><div class="section-title"><h2 id="spaces-title"><span data-i18n="workspaces">Workspaces</span> <span id="workspace-count">0</span></h2><button id="stop-all-workspaces" type="button" disabled><span data-i18n="stopAllWorkspaces">Stop all workspaces</span></button></div><span id="observed" class="muted"></span></div><div id="workspaces" class="workspaces"><div class="empty"><span data-i18n="loading">Loading workspaces…</span></div></div></section>
     <section class="activity" aria-labelledby="activity-title"><div class="section-heading"><h2 id="activity-title"><span data-i18n="activity">Recent activity</span></h2><span class="muted"><span data-i18n="sharedActivity">Shared across all management windows.</span></span></div><ol id="jobs"><li class="muted"><span data-i18n="noJobs">No commands yet.</span></li></ol></section>
     <footer><span><span data-i18n="keepRunning">Closing this page or the Manager keeps running Chrome and SSH processes alive.</span></span><details><summary><span data-i18n="managerInfo">Manager details</span></summary><pre id="manager-info"></pre></details></footer>
-    <div id="confirm" class="modal-backdrop" hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <dialog id="confirm" class="modal" aria-labelledby="confirm-title">
+      <div class="modal-panel">
         <h3 id="confirm-title"></h3>
         <p id="confirm-message" class="modal-message"></p>
         <div class="modal-actions"><button id="confirm-cancel" type="button"></button><button id="confirm-ok" class="primary" type="button"></button></div>
       </div>
-    </div>
-    <div id="bookmark-modal" class="modal-backdrop" hidden>
-      <form id="bookmark-form" class="modal" role="dialog" aria-modal="true" aria-labelledby="bookmark-modal-title">
+    </dialog>
+    <dialog id="bookmark-modal" class="modal" aria-labelledby="bookmark-modal-title">
+      <form id="bookmark-form" class="modal-panel">
         <h3 id="bookmark-modal-title"></h3>
         <label><span data-i18n="bookmarkName">Name</span><input name="name" required maxlength="512"></label>
         <label><span data-i18n="bookmarkUrl">URL</span><input name="url" type="url" required maxlength="8192"></label>
@@ -48,7 +48,7 @@
         <label class="checkbox"><input name="initial" type="checkbox"><span data-i18n="initialOption">Initial · Open once on the first launch</span></label>
         <div class="modal-actions"><button id="bookmark-cancel" type="button" data-i18n="cancel">Cancel</button><button class="primary" type="submit" data-i18n="save">Save</button></div>
       </form>
-    </div>
+    </dialog>
   </main>
 </body>
 </html>
