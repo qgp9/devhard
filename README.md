@@ -107,6 +107,7 @@ the HTML bootstrap. This is a single-user local service, not a remote deployment
 | GET | `/api/jobs/{id}` | One job's current state/outcome |
 | POST | `/api/workspaces` | Register a version-1 workspace configuration |
 | PUT | `/api/workspaces/{name}` | Edit bookmarks live; connection/browser edits require stopped processes |
+| POST | `/api/workspaces/stop_all` | Stop the browser and tunnel of every workspace |
 | POST | `/api/workspaces/{name}/workspace/{start_all,stop_all}` | Combined control |
 | POST | `/api/workspaces/{name}/{tunnel,browser}/{start,stop,restart}` | Individual control |
 | POST | `/api/workspaces/{name}/bookmarks/open` | Open all (`{}`), or one (`{"index": 0}`) bookmark |

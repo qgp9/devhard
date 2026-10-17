@@ -162,6 +162,30 @@ class APITests(unittest.TestCase):
         for body in ({'index': True}, {'index': -1}, {'url': 'http://arbitrary.test'}):
             self.assertEqual(self.request('/api/workspaces/demo/bookmarks/open', 'POST', body).status_code, 400)
 
+    def test_stop_all_workspaces_stops_every_workspace(self):
+        self.wait(self.register('a').json())
+        self.wait(self.register('b').json())
+        with patch.object(self.manager.browsers, 'stop') as browser_stop, \
+                patch.object(self.manager.tunnels, 'stop_all') as tunnel_stop:
+            job = self.request('/api/workspaces/stop_all', 'POST', {})
+            self.assertEqual(job.status_code, 202)
+            self.assertEqual(self.wait(job.json())['state'], 'succeeded')
+        self.assertEqual([entry.args[0] for entry in browser_stop.call_args_list], ['a', 'b'])
+        self.assertEqual([entry.args[0] for entry in tunnel_stop.call_args_list], ['a', 'b'])
+
+    def test_stop_all_workspaces_reports_partial_failures(self):
+        self.wait(self.register('a').json())
+        self.wait(self.register('b').json())
+        with patch.object(self.manager.browsers, 'stop',
+                          side_effect=[None, TunnelError('browser_ownership_unknown', 'unverified')]), \
+                patch.object(self.manager.tunnels, 'stop_all') as tunnel_stop:
+            result = self.wait(self.request('/api/workspaces/stop_all', 'POST', {}).json())
+        self.assertEqual(result['state'], 'partial')
+        self.assertEqual(result['error']['code'], 'stop_all_partial')
+        self.assertEqual([entry['workspace'] for entry in result['result']['errors']], ['b'])
+        self.assertEqual(result['result']['errors'][0]['code'], 'browser_ownership_unknown')
+        tunnel_stop.assert_called_once_with('a')
+
     def test_command_queue_is_bounded(self):
         release, entered = threading.Event(), threading.Event()
         self.addCleanup(release.set)

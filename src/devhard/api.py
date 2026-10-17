@@ -214,6 +214,13 @@ def create_app(manager, origin, on_ready=None):
         config = WorkspaceConfig.parse(await json_body(request))
         return accepted(config.name, 'register', lambda: manager.register(config))
 
+    @app.post('/api/workspaces/stop_all')
+    async def stop_all(request: Request):
+        body = await json_body(request)
+        if body != {}:
+            raise InvalidConfig('Command body must be an empty object')
+        return accepted('*', 'workspaces.stop_all', manager.stop_all_workspaces)
+
     @app.put('/api/workspaces/{name}')
     async def update(name: str, request: Request):
         config = WorkspaceConfig.parse(await json_body(request))

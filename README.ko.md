@@ -207,6 +207,7 @@ proxy-header 신뢰는 사용하지 않습니다. no-store/CSP/frame 제한도 �
 | GET | `/api/jobs/{id}` | 작업 상태와 결과 |
 | POST | `/api/workspaces` | 버전 1 설정으로 등록 |
 | PUT | `/api/workspaces/{name}` | 북마크는 실행 중 변경, 연결·브라우저 변경은 종료 후 |
+| POST | `/api/workspaces/stop_all` | 모든 워크스페이스의 브라우저와 SSH 종료 |
 | POST | `/api/workspaces/{name}/workspace/{start_all,stop_all}` | 전체 제어 |
 | POST | `/api/workspaces/{name}/{tunnel,browser}/{start,stop,restart}` | 개별 제어 |
 | POST | `/api/workspaces/{name}/bookmarks/open` | 전체 `{}` 또는 개별 `{"index": 0}` 북마크 열기 |

@@ -131,6 +131,15 @@ h2 {
   gap:15px;
   margin:20px 0 16px
 }
+.section-title {
+  display:flex;
+  align-items:center;
+  gap:14px
+}
+.section-title button {
+  font-size:12px;
+  padding:6px 9px
+}
 .muted,small,.hint {
   color:var(--muted);
   font-size:12px;
@@ -378,6 +387,40 @@ summary {
 #notice.failure {
   background:#fff0e9;
   color:#a33d35
+}
+.modal-backdrop {
+  position:fixed;
+  inset:0;
+  z-index:10;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(31,38,34,.42)
+}
+.modal {
+  width:100%;
+  max-width:420px;
+  padding:23px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 18px 44px rgba(31,38,34,.22)
+}
+.modal h3 {
+  margin:0 0 10px;
+  font-size:17px
+}
+.modal-message {
+  margin:0 0 20px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.6
+}
+.modal-actions {
+  display:flex;
+  justify-content:flex-end;
+  gap:8px
 }
 .activity {
   margin:38px 0 30px

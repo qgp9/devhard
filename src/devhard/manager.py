@@ -184,6 +184,27 @@ class Manager:
                 raise DevHardError(f'unsupported workspace action: {action}')
             return {'result': 'success', 'workspace': self.view(config, self.store.runtime(name))}
 
+    def stop_all_workspaces(self):
+        """Stop the browser and tunnel of every workspace, reporting per-workspace failures."""
+        with self.operations:
+            if not self.ready:
+                raise DevHardError('Manager is not ready')
+            failures = []
+            for config in self.store.workspaces():
+                try:
+                    self.browsers.stop(config.name)
+                    self.tunnels.stop_all(config.name)
+                except (DevHardError, OSError) as error:
+                    failures.append({'workspace': config.name,
+                                     'code': getattr(error, 'code', 'stop_failed'),
+                                     'message': str(error)})
+            self.restored = [self.view(config, self.store.runtime(config.name)) for config in self.store.workspaces()]
+            if failures:
+                return {'result': 'partial', 'errors': failures,
+                        'error': {'code': 'stop_all_partial',
+                                  'message': '; '.join(f"{f['workspace']}: {f['message']}" for f in failures)}}
+            return {'result': 'success'}
+
     def __exit__(self, *_):
         if self.fd is not None:
             self.ready = False

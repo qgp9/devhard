@@ -27,6 +27,28 @@ async function command(name, component, action, body={}) {
     await poll();
   } catch(error) { notice('rawError',{message:error.message},true); }
 }
+async function submitStopAll() {
+  try {
+    const job=await api('/api/workspaces/stop_all','POST',{});
+    notice('accepted',{name:t('allWorkspaces'),action:job.action});
+    await poll();
+  } catch(error) { notice('rawError',{message:error.message},true); }
+}
+let currentConfirm=null;
+function renderConfirm() {
+  if(!currentConfirm) return;
+  $('#confirm-title').textContent=t(currentConfirm.titleKey);
+  $('#confirm-message').textContent=t(currentConfirm.messageKey,currentConfirm.params);
+  $('#confirm-ok').textContent=t(currentConfirm.okKey);
+  $('#confirm-cancel').textContent=t('cancel');
+}
+function openConfirm(descriptor) { currentConfirm=descriptor; renderConfirm(); $('#confirm').hidden=false; $('#confirm-cancel').focus(); }
+function closeConfirm() { $('#confirm').hidden=true; currentConfirm=null; }
+function stopAllWorkspaces() {
+  const active=(state?.workspaces||[]).filter(w=>['running','listening'].includes(w.status.tunnel) || w.status.browser==='running').length;
+  if(active) return openConfirm({titleKey:'stopAllTitle',messageKey:'stopAllBody',params:{count:active},okKey:'stopAll',onConfirm:submitStopAll});
+  submitStopAll();
+}
 function bookmarkField(labelKey, field, value, type='text') {
   const label=el('label'), caption=el('span',t(labelKey)); caption.dataset.i18n=labelKey;
   const input=el(type==='textarea'?'textarea':'input'); input.dataset.field=field;
@@ -111,7 +133,7 @@ function render() {
   const jobs=$('#jobs'); jobs.replaceChildren();
   for(const job of state.jobs.slice(-12).reverse()) {
     const row=el('li'); row.dataset.job=job.id;
-    row.append(badge('',job.state),el('span',`${job.workspace} · ${t(job.action)}`,'job-description'),el('time',DevHardI18n.time(job.accepted_at)));
+    row.append(badge('',job.state),el('span',`${job.workspace==='*'?'':job.workspace+' · '}${t(job.action)}`,'job-description'),el('time',DevHardI18n.time(job.accepted_at)));
     if(job.error) row.append(el('div',job.error.message,'job-error')); jobs.append(row);
   }
   if(!state.jobs.length) jobs.append(el('li',t('noJobs'),'muted'));
@@ -132,9 +154,14 @@ async function poll() {
     connected=false; connectionLost=true; $('#connection').textContent=t('offline'); $('#connection').className='offline';
     notice('connectionFailed',{},true);
     if(state) render();
-  } finally { polling=false; $('#new-workspace').disabled=!connected; $('#save-workspace').disabled=!connected || submitting; }
+  } finally { polling=false; $('#new-workspace').disabled=!connected; $('#save-workspace').disabled=!connected || submitting; $('#stop-all-workspaces').disabled=!connected || !state?.workspaces?.length; }
 }
 $('#new-workspace').addEventListener('click',()=>edit());
+$('#stop-all-workspaces').addEventListener('click',stopAllWorkspaces);
+$('#confirm-cancel').addEventListener('click',closeConfirm);
+$('#confirm-ok').addEventListener('click',()=>{ const action=currentConfirm?.onConfirm; closeConfirm(); action?.(); });
+$('#confirm').addEventListener('click',event=>{ if(event.target===$('#confirm')) closeConfirm(); });
+document.addEventListener('keydown',event=>{ if(event.key==='Escape' && currentConfirm) closeConfirm(); });
 $('#add-bookmark').addEventListener('click',()=>addBookmark());
 $('#cancel-edit').addEventListener('click',()=>{$('#editor').hidden=true;});
 form.addEventListener('submit',async(event)=>{
@@ -154,6 +181,7 @@ function translate() {
   $('#connection').textContent=t(connected?'online':connectionLost?'offline':'connecting');
   $('#observed').textContent=state?.observed_at?t('observed',{time:DevHardI18n.time(state.observed_at)}):'';
   if(currentNotice) notice(currentNotice.key,currentNotice.params,currentNotice.failure);
+  renderConfirm();
   if(state) render();
 }
 $('#language').addEventListener('change',event=>{ DevHardI18n.select(event.target.value); translate(); });
