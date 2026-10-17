@@ -58,11 +58,19 @@ Open the printed `api_url` in one or more ordinary local browser tabs/windows.
 Use **＋ Workspace** to register an SSH host and named HTTP(S) bookmarks, with
 optional descriptions. Mark a bookmark **Initial** to open it automatically on
 this workspace’s first successful Chrome launch. It remains an ordinary bookmark
-afterwards. **Open** and **Open all** add new tabs to that workspace’s running
-Chrome, preserving its session, tunnel and reserved port. Start Chrome first;
-opening a bookmark never starts a stopped browser or SSH. Existing tabs are not
-queried, so repeated requests can create duplicate tabs. Completion means Chrome
-accepted the command, not that the destination page loaded.
+afterwards. **Open** uses Chrome’s native `--focus` option to activate a matching
+URL in that workspace’s running Chrome, opening a new tab if none matches.
+**Open all** processes each bookmark separately. The session, tunnel and reserved
+port are preserved. Start Chrome first; opening a bookmark never starts a stopped
+browser or SSH. Completion means Chrome accepted the command, not that the
+page loaded.
+
+Chrome determines URL matching; a redirected page may no longer match its saved
+URL. Literal commas and trailing `*` have special selector meanings, so these
+URLs open as ordinary new tabs. Older Chrome versions may also open duplicates.
+Missing focus reports never trigger a retry, since the URL may already be open.
+An explicit selector parse error is retried once without focus. No production
+CDP connection or tab polling is used.
 
 Bookmarks can be added, edited or removed while Chrome is running. Stop both
 Chrome and SSH to change host, executable or session restoration settings.
@@ -365,6 +373,7 @@ mise exec -- python experiments/bookmark_probe.py
 ```
 
 This disposable real-Chrome probe checks Initial-only startup, individual/all
-bookmark opening, intentional duplicates, the same native process and reservation,
+bookmark opening, existing-tab activation, mixed focus/open requests, literal selector
+characters, Unicode URLs, the same native process and reservation,
 live metadata edits, blank later launches without restoration, and exit-race cleanup.
 CDP is used only by the probe to observe test tabs.

@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import time
 import uuid
+from urllib.parse import quote
 
 from . import process
 from .config import InvalidConfig, fields, integer, version
@@ -156,7 +158,7 @@ class BrowserController:
 
     def reconcile_open(self, name, raw):
         """A notifier must exit; never adopt a new browser created during an exit race."""
-        fields(raw, ['purpose', 'argv', 'marker', 'schema_version'],
+        fields(raw, ['purpose', 'argv', 'marker', 'schema_version', 'focus_result'],
                ['purpose', 'argv', 'marker', 'schema_version'])
         version(raw['schema_version'])
         argv, marker = raw['argv'], raw['marker']
@@ -164,6 +166,16 @@ class BrowserController:
                 or not isinstance(marker, str) or marker not in argv or '--new-tab' not in argv
                 or not self.expected(name, {'marker': marker, 'argv': argv})):
             raise InvalidConfig('invalid bookmark notification journal')
+        result_path = None
+        if 'focus_result' in raw:
+            filename = raw['focus_result']
+            suffix = marker.removeprefix('--devhard-instance=')
+            if (not re.fullmatch(r'[0-9a-f]{32}', suffix)
+                    or filename != f'bookmark-focus-{suffix}.json'):
+                raise InvalidConfig('invalid bookmark focus result path')
+            result_path = self.store.safe('workspaces', name, 'runtime', filename)
+            if f'--focus-result-file={result_path}' not in argv:
+                raise InvalidConfig('focus result path differs from notification command')
         record = self.store.runtime(name).processes['browser']
         if record is not None and record['marker'] == marker:
             raise InvalidConfig('bookmark notifier cannot be the owned browser')
@@ -181,9 +193,24 @@ class BrowserController:
             owners = process.profile_processes(self.profile(name))
         if owners and (record is None or process.identity(record) != 'owned' or owners != [record['pid']]):
             raise BrowserError('browser_ownership_unknown', 'Unverified profile owner after bookmark notification')
+        if result_path is not None:
+            result_path.unlink(missing_ok=True)
         self.journal_path(name).unlink()
 
     def open_bookmarks(self, name, urls):
+        outcomes = []
+        # Chrome's comma-separated selectors mean OR, not focus/open each URL.
+        # Send one request per bookmark, including duplicate entries in the list.
+        for url in urls:
+            action = self.notify_bookmark(name, url)
+            if action == 'parse_error':
+                # Chrome does not open the positional URL on a selector parse error.
+                # Retry without the selector only after receiving that explicit result.
+                action = self.notify_bookmark(name, url, use_focus=False)
+            outcomes.append({'url': url, 'action': action})
+        return {'result': 'submitted', 'count': len(urls), 'mode': 'focus_or_open', 'outcomes': outcomes}
+
+    def notify_bookmark(self, name, url, *, use_focus=True):
         self.store.require_writer()
         self.reconcile(name)
         observed = self.observe(name)
@@ -191,27 +218,59 @@ class BrowserController:
             raise BrowserError('browser_not_running', 'Start this workspace’s Chrome before opening bookmarks')
         record = self.store.runtime(name).processes['browser']
         marker = f'--devhard-instance={uuid.uuid4().hex}'
+        # These have special meaning in Chrome's selector syntax. Never interpret
+        # a literal bookmark as multiple selectors or a URL prefix wildcard.
+        focus = use_focus and ',' not in url and not url.endswith('*')
         # Preserve proxy safety even if Chrome exits between ownership check and spawn.
         port = self.store.runtime(name).reserved_port
         argv = [record['executable'], f'--user-data-dir={self.profile(name)}',
                 f'--proxy-server=socks5://127.0.0.1:{port}', '--proxy-bypass-list=<-loopback>',
                 '--no-first-run', '--no-default-browser-check', '--disable-background-mode',
-                marker, '--new-tab', *urls]
+                marker, '--new-tab']
         journal = self.journal_path(name)
         raw = {'schema_version': 1, 'purpose': 'open_bookmarks', 'argv': argv, 'marker': marker}
+        result_path = None
+        if focus:
+            filename = f'bookmark-focus-{marker.split("=", 1)[1]}.json'
+            result_path = self.store.safe('workspaces', name, 'runtime', filename)
+            # GetSwitchValueASCII is used by Chrome. Percent-encode Unicode, but
+            # preserve existing escapes and URL structure for GURL matching.
+            selector = quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
+            argv += [f'--focus={selector}', f'--focus-result-file={result_path}']
+            raw['focus_result'] = filename
+        argv.append(url)  # Native fallback when no existing tab matches.
         atomic_write(journal, json_text(raw))
         child = None
         try:
+            if result_path is not None:
+                atomic_write(result_path, '')  # Owner-only permissions, fresh per request.
             log_path = self.store.safe('workspaces', name, 'runtime', 'browser.log')
             fd = os.open(log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, 'ab', buffering=0) as log:
                 child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                          start_new_session=True, close_fds=True)
             code = child.wait(timeout=self.start_timeout)
+            payload = None
+            if result_path is not None:
+                try:
+                    payload = self.store.read(result_path)
+                except (OSError, InvalidConfig):
+                    pass  # Older Chrome can ignore the switch and open the URL normally.
             self.reconcile_open(name, raw)
             if code != 0 or process.identity(record) != 'owned' or self.observe(name)['state'] != 'running':
                 raise BrowserError('bookmark_open_failed', 'Chrome did not accept bookmarks in the original instance')
-            return {'result': 'submitted', 'count': len(urls), 'duplicate_check': False}
+            if not focus:
+                return 'opened_without_focus'
+            status = payload.get('status') if isinstance(payload, dict) else None
+            if status == 'focused':
+                return 'focused'
+            if status in ('no_match', 'opened_fallback'):
+                # no_match JSON exit_code=1 is normal; the notifier itself exits 0.
+                return 'opened'
+            if status == 'parse_error':
+                return 'parse_error'
+            # Do not resend on a missing report: a new tab may already be open.
+            return 'unconfirmed'
         except BaseException as error:
             if journal.exists():
                 self.reconcile_open(name, raw)

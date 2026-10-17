@@ -49,11 +49,27 @@ def main():
             original = manager.store.runtime(config.name)
             check('single bookmark accepted', manager.open_bookmarks(config.name, 1)['count'] == 1)
             check('single bookmark adds a tab in original instance', Counter(p['url'] for p in pages(2)) == Counter(b.url for b in config.bookmarks))
+            response = manager.open_bookmarks(config.name)
+            check('Open all focuses both existing bookmarks without duplicates',
+                  Counter(p['url'] for p in pages(2)) == Counter(b.url for b in config.bookmarks)
+                  and all(r['action']=='focused' for r in response['outcomes']))
+            response = manager.open_bookmarks(config.name, 0)
+            entries = pages(2)
+            check('repeated Open focuses instead of adding another tab', response['outcomes'][0]['action']=='focused')
+            first_target = next(p for p in entries if p['url']==config.bookmarks[0].url)
+            def first_visible():
+                value = cdp(first_target['webSocketDebuggerUrl'], 'Runtime.evaluate', {
+                    'expression': 'document.visibilityState', 'returnByValue': True})
+                return value['result'].get('value')=='visible'
+            check('previously inactive tab becomes visible', wait_for(first_visible))
+            added = Bookmark('Metrics','http://127.0.0.1:6767/?view=metrics#panel')
+            manager.update(replace(config,bookmarks=(*config.bookmarks,added)))
+            response = manager.open_bookmarks(config.name)
+            check('mixed Open all focuses old URLs and opens the missing URL',
+                  len(pages(3))==3 and [r['action'] for r in response['outcomes']]==['focused','focused','opened'])
             manager.open_bookmarks(config.name)
-            check('Open all adds both bookmarks, retaining duplicate URLs', Counter(p['url'] for p in pages(4)) == Counter({b.url: 2 for b in config.bookmarks}))
-            manager.open_bookmarks(config.name, 0)
-            entries = pages(5)
-            check('repeated Open intentionally adds another tab', Counter(p['url'] for p in entries)[config.bookmarks[0].url] == 3)
+            entries=pages(3)
+            check('repeating mixed Open all leaves tab count unchanged',len(entries)==3)
             check('native browser record, tunnel and reservation unchanged', manager.store.runtime(config.name) == original)
             for entry in entries:
                 def loaded():
@@ -65,7 +81,17 @@ def main():
             manager.update(changed)
             check('live bookmark edit preserves original browser', manager.store.runtime(config.name) == original)
             manager.open_bookmarks(config.name)
-            check('Open all uses edited bookmark list', len(pages(6)) == 6)
+            check('Open all uses edited bookmark list without duplicates', len(pages(3)) == 3)
+            special = [Bookmark('Comma','http://127.0.0.1:6767/a,b'),
+                       Bookmark('Literal star','http://127.0.0.1:6767/path*'),
+                       Bookmark('Unicode','http://127.0.0.1:6767/한글')]
+            manager.update(replace(config,bookmarks=tuple(special)))
+            check('comma URL opens literally without selector interpretation',
+                  manager.open_bookmarks(config.name,0)['outcomes'][0]['action']=='opened_without_focus' and len(pages(4))==4)
+            check('literal trailing star never becomes a prefix selector',
+                  manager.open_bookmarks(config.name,1)['outcomes'][0]['action']=='opened_without_focus' and len(pages(5))==5)
+            check('Unicode URL opens on no match',manager.open_bookmarks(config.name,2)['outcomes'][0]['action']=='opened' and len(pages(6))==6)
+            check('Unicode URL focuses on repeated Open',manager.open_bookmarks(config.name,2)['outcomes'][0]['action']=='focused' and len(pages(6))==6)
             manager.workspace_action(config.name, 'stop_all')
             try:
                 manager.open_bookmarks(config.name)

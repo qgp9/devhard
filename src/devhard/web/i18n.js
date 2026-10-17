@@ -82,7 +82,7 @@ const DevHardI18n = (() => {
     "open": "Open",
     "openAll": "Open all",
     "noBookmarks": "No bookmarks. Add some in Settings.",
-    "openHelp": "Opens new tabs in this workspace’s running Chrome. Start Chrome first. Existing tabs are not checked; duplicates may open.",
+    "openHelp": "Focuses a matching tab in this workspace’s running Chrome, or opens a new tab. Start Chrome first. Older Chrome and some URLs may open duplicates.",
     "initialHelp": "Used once on the first launch. Remains a regular bookmark afterwards.",
     "bookmarks.open": "Open bookmarks"
   },
@@ -167,7 +167,7 @@ const DevHardI18n = (() => {
     "open": "열기",
     "openAll": "모두 열기",
     "noBookmarks": "북마크가 없습니다. 설정에서 추가하세요.",
-    "openHelp": "해당 워크스페이스의 실행 중인 Chrome에 새 탭으로 엽니다. Chrome을 먼저 시작하세요. 중복 탭은 확인하지 않습니다.",
+    "openHelp": "실행 중인 해당 Chrome에서 일치하는 탭으로 이동하고, 없으면 새 탭을 엽니다. Chrome을 먼저 시작하세요. 구버전 Chrome이나 일부 URL은 중복될 수 있습니다.",
     "initialHelp": "최초 실행에 한 번 사용하고, 이후에는 일반 북마크로 사용할 수 있습니다.",
     "bookmarks.open": "북마크 열기"
   }
